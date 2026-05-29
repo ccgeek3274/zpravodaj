@@ -29,6 +29,20 @@ button {
 .err { color: #dc2626; }
 .note { margin-top: 8px; font-size: 12px; color: #555; line-height: 1.45; }
 
+/* ── Název soutěže pod polem ID ──────────────────────────────── */
+#compNameView { margin-top: 4px; font-size: 12px; color: #555; min-height: 16px; }
+
+/* ── Historie posledních generování ──────────────────────────── */
+#history { margin-top: 16px; }
+#hist-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.hist-item {
+  margin-top: 0; padding: 5px 10px; font-size: 12px; color: #333;
+  background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px;
+  cursor: pointer; text-align: left;
+}
+.hist-item:hover { background: #e5e7eb; }
+.hist-tpl { color: #888; font-family: monospace; }
+
 /* ── Lišta se stažením + náhled dokumentu ────────────────────── */
 #output { margin-top: 30px; }
 #dl-bar { display: flex; gap: 10px; margin-bottom: 14px; }
@@ -73,6 +87,7 @@ button {
   <div>
     <label>ID soutěže (compId)</label>
     <input type="number" id="compId" value="3317">
+    <div id="compNameView"></div>
   </div>
   <div>
     <label>Číslo kola</label>
@@ -85,6 +100,8 @@ button {
 
 <label>Název souboru (placeholdery: [soutez] = ID soutěže, [kolo] = číslo kola)</label>
 <input type="text" id="fname" value="[soutez]_[kolo]">
+
+<div id="history"></div>
 
 <button id="btn-gen" onclick="generate()">Generovat</button>
 <button id="btn-clear" onclick="clearCache()">Vymazat cache</button>
@@ -153,13 +170,13 @@ function clearCache() {
 
 /* ── Rate-limitované API (max 1 req / 3,1 s) ───────────────────── */
 let _apiTs = 0;
-async function apiGet(path, label) {
+async function apiGet(path, label, quiet) {
   label = label || path;
   const hit = getCached(path);
   if (hit !== null) { console.log('[cache hit]', path); return hit; }
   const wait = Math.max(0, _apiTs + API_INTERVAL - Date.now());
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  setMsg('Načítám: ' + label + '…');
+  if (!quiet) setMsg('Načítám: ' + label + '…');
   _apiTs = Date.now();
   const r = await fetch(API + path);
   if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
@@ -547,6 +564,9 @@ async function generate() {
     _lastBlob = blob;
     _lastFname = fname;
 
+    // Ulož do historie (soutěž + šablona názvu souboru)
+    saveHistoryEntry({ compId: compId, compName: compName, fname: tpl, ts: Date.now() });
+
     // Náhled pod formulářem + lišta s tlačítky (žádné automatické stažení)
     document.getElementById('output').innerHTML =
       '<div id="dl-bar">'
@@ -572,6 +592,99 @@ async function generate() {
     console.error(e);
   }
 }
+
+/* ── Náhled názvu soutěže pod polem ID ──────────────────────────
+   Debounce + nevolá se zbytečně: jen při změně ID, cache hit = bez sítě,
+   tichý dotaz (neruší hlavní hlášku). */
+let _lookupTimer = null;
+let _lookupId    = null;   // ID, pro které už název máme / zjišťujeme
+
+function scheduleLookup() {
+  clearTimeout(_lookupTimer);
+  _lookupTimer = setTimeout(lookupCompName, 500);
+}
+
+function nameLine(d, compId) {
+  const name = d.compName || ('Soutěž ' + compId);
+  const reg  = d.regionName ? ' · ' + esc(d.regionName) : '';
+  return '<b>' + esc(name) + '</b>' + reg;
+}
+
+async function lookupCompName() {
+  const view   = document.getElementById('compNameView');
+  const compId = document.getElementById('compId').value.trim();
+  if (!compId)            { view.textContent = ''; _lookupId = null; return; }
+  if (compId === _lookupId) return;        // totéž ID už řešíme/máme → nevolat
+  _lookupId = compId;
+
+  const path = '/competitions/' + compId + '/details';
+  const cached = getCached(path);
+  if (cached) { view.innerHTML = nameLine(cached, compId); return; }
+
+  view.textContent = 'načítám název…';
+  try {
+    const d = await apiGet(path, null, true);   // tichý dotaz
+    if (document.getElementById('compId').value.trim() !== compId) return; // ID se mezitím změnilo
+    view.innerHTML = nameLine(d, compId);
+  } catch (e) {
+    if (document.getElementById('compId').value.trim() === compId)
+      view.innerHTML = '<span class="err">soutěž nenalezena</span>';
+    _lookupId = null;   // ať to po opravě zkusí znovu
+  }
+}
+
+/* ── Historie posledních 5 generování (localStorage) ────────────
+   Záznam = soutěž (ID + název) + šablona názvu souboru.
+   Přežívá „Vymazat cache" (jiný klíč než sscr_*). */
+const HKEY = 'sscrHistory';
+const HMAX = 5;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HKEY)) || []; }
+  catch (e) { return []; }
+}
+function saveHistoryEntry(rec) {
+  let h = loadHistory();
+  h = h.filter(function(x) { return !(x.compId === rec.compId && x.fname === rec.fname); });
+  h.unshift(rec);
+  h = h.slice(0, HMAX);
+  try { localStorage.setItem(HKEY, JSON.stringify(h)); } catch (e) {}
+  renderHistory();
+}
+function renderHistory() {
+  const box = document.getElementById('history');
+  const h   = loadHistory();
+  if (!h.length) { box.innerHTML = ''; return; }
+  let html = '<label>Historie (posledních ' + HMAX + ')</label><div id="hist-list">';
+  h.forEach(function(rec, i) {
+    const name = rec.compName || ('Soutěž ' + rec.compId);
+    html += '<button type="button" class="hist-item" onclick="applyHistory(' + i + ')">'
+          + esc(name) + ' <span class="hist-tpl">' + esc(rec.fname) + '</span></button>';
+  });
+  html += '</div>';
+  box.innerHTML = html;
+}
+function applyHistory(i) {
+  const rec = loadHistory()[i];
+  if (!rec) return;
+  document.getElementById('compId').value = rec.compId;
+  document.getElementById('fname').value  = rec.fname;
+  lookupCompName();
+}
+
+/* ── Inicializace ───────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('compId').addEventListener('input', scheduleLookup);
+
+  // Poslední záznam předvyplní soutěž + šablonu názvu
+  const h = loadHistory();
+  if (h.length) {
+    document.getElementById('compId').value = h[0].compId;
+    document.getElementById('fname').value  = h[0].fname;
+  }
+  renderHistory();
+  lookupCompName();
+});
 </script>
 </body>
 </html>
