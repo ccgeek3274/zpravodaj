@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Zpravodaj soutěže</title>
+<!-- v8.5.0 má interní TDZ bug v UMD bundlu; 7.8.2 je stabilní -->
+<script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+<style>
+body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
+h2   { margin-bottom: 20px; }
+label { display: block; margin-top: 12px; font-size: 13px; color: #555; margin-bottom: 3px; }
+input, textarea {
+  width: 100%; padding: 6px 8px; font-size: 14px;
+  border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+}
+textarea { height: 72px; font-family: sans-serif; resize: vertical; }
+.row { display: flex; gap: 12px; }
+.row > div { flex: 1; }
+button {
+  margin-top: 18px; padding: 9px 22px; font-size: 14px;
+  border: none; border-radius: 4px; cursor: pointer; color: white;
+}
+#btn-gen   { background: #2563eb; }
+#btn-gen:hover   { background: #1d4ed8; }
+#btn-clear { background: #6b7280; margin-left: 8px; }
+#btn-clear:hover { background: #4b5563; }
+#msg { margin-top: 10px; font-size: 13px; }
+.ok  { color: #16a34a; }
+.err { color: #dc2626; }
+</style>
+</head>
+<body>
+
+<h2>Zpravodaj soutěže — DOCX</h2>
+
+<div class="row">
+  <div>
+    <label>ID soutěže (compId)</label>
+    <input type="number" id="compId" value="3327">
+  </div>
+  <div>
+    <label>Číslo kola</label>
+    <input type="number" id="kolo" value="2">
+  </div>
+</div>
+
+<label>Doplňující text (sekce Různé)</label>
+<textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
+
+<label>Název souboru (placeholdery: [soutez] = ID soutěže, [kolo] = číslo kola)</label>
+<input type="text" id="fname" value="[soutez]_[kolo]">
+
+<button id="btn-gen" onclick="generate()">Generovat DOCX</button>
+<button id="btn-clear" onclick="clearCache()">Vymazat cache</button>
+<div id="msg"></div>
+
+<script>
+/* ================================================================
+   DŮLEŽITÉ: žádný přístup k docx.* na top-levelu skriptu!
+   UMD bundle má interní TDZ chyby při inicializaci.
+   Veškerý přístup k docx.* probíhá uvnitř funkčních těl (lazy).
+   ================================================================ */
+
+/* ── Rozměry stránky (jen čísla, žádná závislost na docx) ──────── */
+const API     = 'https://api.chess.cz/api';
+const PAGE_W  = 11906;
+const PAGE_H  = 16838;
+const MARGIN  = 1440;
+const CONTENT = PAGE_W - 2 * MARGIN; // 9026 DXA
+const CM      = 567;                 // 1 cm ≈ 567 twips (dxa)
+
+// Výsledková tabulka — 6 sloupců (jméno a ELO odděleně):
+// č.partie | domácí jméno | dom. ELO | výsledek | hosté ELO | hosté jméno
+const COL_BOARD  = 460;
+const COL_RESULT = 1120;
+const COL_ELO    = 640;
+// COL_NAME se počítá dynamicky podle nejdelšího jména (viz computeNameWidth)
+
+const FS = 20;             // 10 pt (half-points)
+const API_INTERVAL = 1000; // min. rozestup mezi voláními API (ms)
+
+// Barvy (jen řetězce)
+const C_HDR    = 'C8D9F0';
+const C_ALT    = 'F2F2F2';
+const C_WHITE  = 'FFFFFF';
+const C_BORDER = 'AAAAAA';
+
+// Ohraničení
+const B_S   = { style: 'single', size: 4, color: C_BORDER };
+const B_ALL = { top: B_S, bottom: B_S, left: B_S, right: B_S };
+
+/* ── Cache (localStorage, TTL 1 hod) ───────────────────────────── */
+function cacheKey(path) {
+  return 'sscr_' + btoa(unescape(encodeURIComponent(path)));
+}
+function getCached(path) {
+  try {
+    const raw = localStorage.getItem(cacheKey(path));
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > 3_600_000) { localStorage.removeItem(cacheKey(path)); return null; }
+    return data;
+  } catch (e) { return null; }
+}
+function setCache(path, data) {
+  try { localStorage.setItem(cacheKey(path), JSON.stringify({ data, ts: Date.now() })); } catch (e) {}
+}
+function clearCache() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    if (localStorage.key(i).startsWith('sscr_')) keys.push(localStorage.key(i));
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+  setMsg('Cache vymazána (' + keys.length + ' položek).', 'ok');
+}
+
+/* ── Rate-limitované API (max 1 req / 3,1 s) ───────────────────── */
+let _apiTs = 0;
+async function apiGet(path, label) {
+  label = label || path;
+  const hit = getCached(path);
+  if (hit !== null) { console.log('[cache hit]', path); return hit; }
+  const wait = Math.max(0, _apiTs + API_INTERVAL - Date.now());
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  setMsg('Načítám: ' + label + '…');
+  _apiTs = Date.now();
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
+  const data = await r.json();
+  setCache(path, data);
+  return data;
+}
+
+/* ── Pomocné funkce ─────────────────────────────────────────────── */
+function setMsg(html, cls) {
+  document.getElementById('msg').innerHTML =
+    cls ? '<span class="' + cls + '">' + html + '</span>'
+        : '<span style="color:#555">' + html + '</span>';
+}
+function norm(d) { return Array.isArray(d) ? d : (d ? [d] : []); }
+
+function fmtHalf(v) {
+  if (v == null) return '0';
+  const n = parseFloat(v);
+  if (isNaN(n)) return String(v);
+  const w = Math.floor(n), h = (n - w) >= 0.5;
+  if (w === 0 && h) return '½';
+  return h ? w + '½' : String(w);
+}
+function fmtScore(h, a) {
+  return (h == null || a == null) ? '' : fmtHalf(h) + ' – ' + fmtHalf(a);
+}
+function fmtResult(h, a) {
+  if (h === 1   && a === 0)   return '1 : 0';
+  if (h === 0   && a === 1)   return '0 : 1';
+  if (h === 0.5 && a === 0.5) return '½ : ½';
+  return '';
+}
+function eloStr(v) { return (v != null && v !== '') ? String(v) : '0'; }
+function fmtDateCz(s) {
+  if (!s) return '';
+  const [d, m, y] = s.split('.');
+  return d + '. ' + m + '. ' + y;
+}
+function todayCz() {
+  const d = new Date();
+  return d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear();
+}
+
+// "Jukl Karel" → "Karel Jukl" (prohození jména a příjmení, jen u dvouslovných)
+function vedouciName(s) {
+  if (!s) return '';
+  const p = s.trim().split(/\s+/);
+  return p.length === 2 ? p[1] + ' ' + p[0] : s.trim();
+}
+
+// Šířka textu v px (Arial 10 pt). V prohlížeči přesně přes canvas, v Node hrubý odhad.
+function textWidthPx(text, bold) {
+  text = text || '';
+  if (typeof document !== 'undefined' && document.createElement) {
+    const c = textWidthPx._c || (textWidthPx._c = document.createElement('canvas'));
+    const ctx = c.getContext('2d');
+    ctx.font = (bold ? 'bold ' : '') + '10pt Arial';
+    return ctx.measureText(text).width;
+  }
+  return text.length * (bold ? 7.4 : 7.0); // fallback (testy v Node) – konzervativní
+}
+
+// Šířka sloupce se jmény v DXA. Zohledňuje:
+//  – jména hráčů (běžným řezem) → potřebují nameW
+//  – názvy týmů (TUČNĚ, širší!)  → jsou v buňce přes span (jméno + ELO),
+//    takže potřebují nameW + COL_ELO
+// Vrací max obou požadavků, ať se nikdy nic nezalomí.
+function computeNameWidth(matchList) {
+  let maxPlayerPx = 0, maxTeamPx = 0;
+  matchList.forEach(function(m) {
+    maxTeamPx = Math.max(maxTeamPx,
+      textWidthPx(m.homeTeamName || '', true),
+      textWidthPx(m.awayTeamName || '', true));
+    norm(m.matchGames).forEach(function(g) {
+      maxPlayerPx = Math.max(maxPlayerPx,
+        textWidthPx(g.homePlayerName || '', false),
+        textWidthPx(g.awayPlayerName || '', false));
+    });
+  });
+  const MARG = 180, REZ = 140;           // okraje buňky (90+90) + rezerva proti zalomení
+  const needPlayer = Math.ceil(maxPlayerPx * 15) + MARG + REZ;
+  const needTeam   = Math.ceil(maxTeamPx   * 15) + MARG + REZ - COL_ELO; // tým má navíc ELO sloupec
+  const w = Math.max(needPlayer, needTeam);
+  const maxAllowed = Math.floor((CONTENT - COL_BOARD - 2 * COL_ELO - COL_RESULT) / 2);
+  return Math.max(1200, Math.min(w, maxAllowed));
+}
+
+/* ── Buňka ──────────────────────────────────────────────────────── */
+function cell(text, opts) {
+  opts = opts || {};
+  const w     = opts.w     || 1000;
+  const bold  = opts.bold  || false;
+  const align = opts.align || 'left';
+  const bg    = opts.bg    || C_WHITE;
+  const fs    = opts.fs    || FS;
+  const span  = opts.span  || 1;
+  const vm    = opts.vm != null ? opts.vm : 24;
+  const keepN = opts.keepNext || false;
+  return new docx.TableCell({
+    width:         { size: w, type: 'dxa' },
+    columnSpan:    span,
+    verticalAlign: 'center',
+    shading:       { fill: bg, type: 'clear' },
+    borders:       B_ALL,
+    margins:       { top: vm, bottom: vm, left: 90, right: 90 },
+    children: [new docx.Paragraph({
+      alignment: align,
+      keepNext:  keepN,   // drží řádek s následujícím → tabulka se nerozdělí mezi stránky
+      keepLines: true,
+      spacing:   { before: 0, after: 0, line: 240, lineRule: 'auto' },
+      children: [new docx.TextRun({ text: String(text != null ? text : ''), bold: bold, size: fs, font: 'Arial' })]
+    })]
+  });
+}
+
+/* ── Tabulka jednoho zápasu (6 sloupců) ─────────────────────────── */
+function buildMatchTable(match, matchNr, nameW) {
+  const games   = norm(match.matchGames);
+  const score   = fmtScore(match.homeTeamScore, match.awayTeamScore);
+  const tableW  = COL_BOARD + nameW + COL_ELO + COL_RESULT + COL_ELO + nameW;
+  const rows    = [];
+
+  // Záhlaví zápasu (modré): číslo | DOMÁCÍ (span2, vlevo) | skóre | HOSTÉ (span2, vpravo)
+  rows.push(new docx.TableRow({ cantSplit: true, children: [
+    cell(matchNr,                  { w: COL_BOARD,        bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
+    cell(match.homeTeamName || '', { w: nameW + COL_ELO,  bold: true, bg: C_HDR, align: 'left',  span: 2, vm: 14, keepNext: true }),
+    cell(score,                    { w: COL_RESULT,       bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
+    cell(match.awayTeamName || '', { w: COL_ELO + nameW,  bold: true, bg: C_HDR, align: 'right', span: 2, vm: 14, keepNext: true }),
+  ]}));
+
+  // Partie: č. | dom.jméno(vlevo) | dom.ELO(vpravo) | výsledek | hosté ELO(vlevo) | hosté jméno(vlevo)
+  games.forEach(function(game, idx) {
+    const kn = idx < games.length - 1;   // poslední řádek bez keepNext (neslepovat s textem za tabulkou)
+    rows.push(new docx.TableRow({ cantSplit: true, children: [
+      cell(idx + 1,                       { w: COL_BOARD,  align: 'center', keepNext: kn }),
+      cell(game.homePlayerName || '',     { w: nameW,      align: 'left',   keepNext: kn }),
+      cell(eloStr(game.homePlayerRating), { w: COL_ELO,    align: 'right',  keepNext: kn }),
+      cell(fmtResult(game.homePlayerResult, game.awayPlayerResult), { w: COL_RESULT, align: 'center', keepNext: kn }),
+      cell(eloStr(game.awayPlayerRating), { w: COL_ELO,    align: 'left',   keepNext: kn }),
+      cell(game.awayPlayerName || '',     { w: nameW,      align: 'left',   keepNext: kn }),
+    ]}));
+  });
+
+  return new docx.Table({
+    width: { size: tableW, type: 'dxa' },
+    columnWidths: [COL_BOARD, nameW, COL_ELO, COL_RESULT, COL_ELO, nameW],
+    rows: rows,
+  });
+}
+
+/* ── Tabulka pořadí ─────────────────────────────────────────────── */
+function buildStandingsTable(teamList) {
+  // P | Družstvo | Z | + | = | − | B | Sk | V
+  var ws = [480, 0, 520, 520, 520, 520, 620, 700, 620];
+  ws[1] = CONTENT - ws.reduce(function(a, b) { return a + b; }, 0);
+
+  var hdrs   = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
+  var aligns = ['center','left','center','center','center','center','center','center','center'];
+
+  var rows = [];
+
+  rows.push(new docx.TableRow({ cantSplit: true,
+    children: hdrs.map(function(h, i) {
+      return cell(h, { w: ws[i], bold: true, bg: C_HDR, align: aligns[i], keepNext: true });
+    })
+  }));
+
+  teamList.forEach(function(team, idx) {
+    var bg   = idx % 2 === 1 ? C_ALT : C_WHITE;
+    var kn   = idx < teamList.length - 1;   // poslední řádek bez keepNext
+    var vals = [
+      team.teamRank    != null ? team.teamRank    : (idx + 1),
+      team.teamName    || '',
+      team.matchesPlayed != null ? team.matchesPlayed : 0,
+      team.matchWins   != null ? team.matchWins   : 0,
+      team.matchDraws  != null ? team.matchDraws  : 0,
+      team.matchLosses != null ? team.matchLosses : 0,
+      team.points      != null ? team.points      : 0,
+      fmtHalf(team.score),
+      team.wonGames    != null ? team.wonGames    : 0,
+    ];
+    rows.push(new docx.TableRow({ cantSplit: true,
+      children: vals.map(function(v, i) {
+        return cell(v, { w: ws[i], bg: bg, align: aligns[i], keepNext: kn });
+      })
+    }));
+  });
+
+  return new docx.Table({
+    width: { size: CONTENT, type: 'dxa' },
+    columnWidths: ws,
+    rows: rows,
+  });
+}
+
+/* ── Odstavec / mezera ──────────────────────────────────────────── */
+function para(text, opts) {
+  opts = opts || {};
+  return new docx.Paragraph({
+    alignment: opts.align || 'left',
+    spacing:   { before: opts.before || 0, after: opts.after || 100 },
+    children:  [new docx.TextRun({
+      text: text, font: 'Arial', size: opts.size || 22, bold: opts.bold || false
+    })]
+  });
+}
+function gap() {
+  return new docx.Paragraph({ spacing: { before: 0, after: 0, line: 120, lineRule: 'auto' }, children: [] });
+}
+
+/* ── Hlavní generátor ───────────────────────────────────────────── */
+async function generate() {
+  const compId   = document.getElementById('compId').value.trim();
+  const kolo     = document.getElementById('kolo').value.trim();
+  const poznamka = document.getElementById('poznamka').value.trim();
+
+  if (!compId || !kolo) { setMsg('Vyplňte compId a číslo kola.', 'err'); return; }
+
+  try {
+    const details   = await apiGet('/competitions/' + compId + '/details', 'detaily soutěže');
+    const matches   = await apiGet('/competitions/' + compId + '/round/' + kolo + '/matches', 'výsledky');
+    const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí');
+
+    let roundDate = '';
+    try {
+      const sched = await apiGet('/competitions/' + compId + '/round/' + kolo + '/schedule', 'termín kola');
+      roundDate = fmtDateCz(sched.roundDate || '');
+    } catch (_) {}
+
+    const compName   = details.compName   || ('Soutěž ' + compId);
+    const regionName = details.regionName || '';
+    const jmeno      = vedouciName(details.compManagerName);
+    const matchList  = norm(matches);
+    const teamList   = norm(standings);
+
+    console.log('details:', details);
+    console.log('matches[0]:', matchList[0]);
+    console.log('standings[0]:', teamList[0]);
+
+    /* ── Obsah dokumentu ── */
+    const children = [
+      para('Zpravodaj z kola č. ' + kolo, { bold: true, align: 'center', size: 32, after: 160 }),
+      para('1. Výsledky', { bold: true, size: FS, before: 60, after: 80 }),
+    ];
+
+    const nameW = computeNameWidth(matchList);
+    matchList.forEach(function(match, mi) {
+      children.push(buildMatchTable(match, kolo + '.' + (mi + 1), nameW));
+      if (mi < matchList.length - 1) children.push(gap());
+    });
+
+    children.push(para('2. Pořadí družstev', { bold: true, size: FS, before: 200, after: 80 }));
+    children.push(buildStandingsTable(teamList));
+    children.push(para('3. Různé a ostatní', { bold: true, size: FS, before: 200, after: 80 }));
+
+    if (poznamka) {
+      poznamka.split('\n').forEach(function(line) { children.push(para(line)); });
+    }
+    if (jmeno) children.push(para(jmeno, { bold: true, before: 80 }));
+    children.push(para(todayCz()));
+
+    /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
+    const headerLines = [];
+    if (regionName) headerLines.push(regionName);
+    headerLines.push(compName);
+    const pageHeader = new docx.Header({
+      children: headerLines.map(function(line) {
+        return new docx.Paragraph({
+          alignment: 'right',
+          spacing: { before: 0, after: 0, line: 200, lineRule: 'auto' },
+          children: [new docx.TextRun({ text: line, size: 16, font: 'Arial' })]
+        });
+      })
+    });
+
+    /* ── Dokument ──
+       header 0,7 cm od okraje; horní okraj zmenšen na 1,4 cm (méně místa nahoře) */
+    const doc = new docx.Document({
+      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+      sections: [{
+        headers: { default: pageHeader },
+        properties: {
+          page: {
+            size:   { width: PAGE_W, height: PAGE_H },
+            margin: {
+              top: Math.round(1.4 * CM), right: MARGIN, bottom: MARGIN, left: MARGIN,
+              header: Math.round(0.7 * CM), footer: Math.round(0.7 * CM)
+            }
+          }
+        },
+        children: children,
+      }]
+    });
+
+    setMsg('Generuji soubor…');
+    const blob = await docx.Packer.toBlob(doc);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+
+    // Název souboru z šablony: [soutez] → compId, [kolo] → číslo kola
+    const tpl = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
+    let fname = tpl.replace(/\[soutez\]/gi, compId).replace(/\[kolo\]/gi, kolo)
+                   .replace(/[\\/:*?"<>|]+/g, '_');   // ošetření nepovolených znaků
+    if (!/\.docx$/i.test(fname)) fname += '.docx';
+
+    a.href = url; a.download = fname; a.click();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+
+    setMsg('✓ Staženo: ' + fname, 'ok');
+
+  } catch (e) {
+    setMsg('Chyba: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+</script>
+</body>
+</html>
