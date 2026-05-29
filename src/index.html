@@ -27,6 +27,42 @@ button {
 #msg { margin-top: 10px; font-size: 13px; }
 .ok  { color: #16a34a; }
 .err { color: #dc2626; }
+.note { margin-top: 8px; font-size: 12px; color: #555; line-height: 1.45; }
+
+/* ── Lišta se stažením + náhled dokumentu ────────────────────── */
+#output { margin-top: 30px; }
+#dl-bar { display: flex; gap: 10px; margin-bottom: 14px; }
+#btn-dl  { margin-top: 0; background: #16a34a; }
+#btn-dl:hover  { background: #15803d; }
+#btn-pdf { margin-top: 0; background: #6b7280; }
+#btn-pdf:hover { background: #4b5563; }
+
+.doc {
+  background: #fff; color: #000; font-family: Arial, sans-serif;
+  border: 1px solid #ddd; box-shadow: 0 1px 5px rgba(0,0,0,.08);
+  padding: 30px 36px;
+}
+.doc-hdr { text-align: right; font-size: 11px; line-height: 1.25; margin-bottom: 8px; }
+.doc h1 { text-align: center; font-size: 20px; margin: 6px 0 16px; }
+.doc h2 { font-size: 13px; font-weight: bold; margin: 16px 0 6px; }
+/* šířka podle obsahu (ne 100 %) → buňky se neroztahují */
+.doc table { border-collapse: collapse; width: auto; max-width: 100%; margin-bottom: 6px; font-size: 13px; }
+.doc td, .doc th { border: 1px solid #aaa; padding: 2px 7px; vertical-align: middle; }
+.doc .c { text-align: center; } .doc .r { text-align: right; } .doc .l { text-align: left; }
+.doc tr.mh td { background: #C8D9F0; font-weight: bold; }
+.doc table.stand th { background: #C8D9F0; font-weight: bold; }
+.doc table.stand tbody tr:nth-child(even) td { background: #F2F2F2; }
+.doc table.res td.elo, .doc table.res td.num { white-space: nowrap; }
+.doc p { margin: 4px 0; font-size: 13px; }
+
+/* tisk → uložit jako PDF: schovej formulář, ukaž jen dokument */
+@media print {
+  body * { visibility: hidden; }
+  #output, #output * { visibility: visible; }
+  #output { position: absolute; left: 0; top: 0; width: 100%; margin: 0; }
+  #dl-bar { display: none !important; }
+  .doc { border: none; box-shadow: none; padding: 0; }
+}
 </style>
 </head>
 <body>
@@ -36,11 +72,11 @@ button {
 <div class="row">
   <div>
     <label>ID soutěže (compId)</label>
-    <input type="number" id="compId" value="3327">
+    <input type="number" id="compId" value="3317">
   </div>
   <div>
     <label>Číslo kola</label>
-    <input type="number" id="kolo" value="2">
+    <input type="number" id="kolo" value="1">
   </div>
 </div>
 
@@ -50,9 +86,10 @@ button {
 <label>Název souboru (placeholdery: [soutez] = ID soutěže, [kolo] = číslo kola)</label>
 <input type="text" id="fname" value="[soutez]_[kolo]">
 
-<button id="btn-gen" onclick="generate()">Generovat DOCX</button>
+<button id="btn-gen" onclick="generate()">Generovat</button>
 <button id="btn-clear" onclick="clearCache()">Vymazat cache</button>
 <div id="msg"></div>
+<div id="output"></div>
 
 <script>
 /* ================================================================
@@ -334,6 +371,86 @@ function gap() {
   return new docx.Paragraph({ spacing: { before: 0, after: 0, line: 120, lineRule: 'auto' }, children: [] });
 }
 
+/* ── HTML náhled (jednoduchý, bez přesných šířek) ───────────────── */
+let _lastBlob = null;   // poslední vygenerovaný DOCX blob
+let _lastFname = '';    // a jeho název
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function previewHtml(d) {
+  let h = '<div class="doc">';
+
+  const hdr = [d.regionName, d.compName].filter(Boolean).map(esc).join('<br>');
+  if (hdr) h += '<div class="doc-hdr">' + hdr + '</div>';
+
+  h += '<h1>' + esc('Zpravodaj z kola č. ' + d.kolo) + '</h1>';
+
+  // 1. Výsledky — každý zápas vlastní tabulka
+  h += '<h2>1. Výsledky</h2>';
+  d.matchList.forEach(function(m, mi) {
+    const nr = d.kolo + '.' + (mi + 1);
+    h += '<table class="res"><tbody>';
+    h += '<tr class="mh">'
+       + '<td class="c num">' + esc(nr) + '</td>'
+       + '<td colspan="2">' + esc(m.homeTeamName || '') + '</td>'
+       + '<td class="c num">' + esc(fmtScore(m.homeTeamScore, m.awayTeamScore)) + '</td>'
+       + '<td class="r" colspan="2">' + esc(m.awayTeamName || '') + '</td>'
+       + '</tr>';
+    norm(m.matchGames).forEach(function(g, idx) {
+      h += '<tr>'
+         + '<td class="c num">' + (idx + 1) + '</td>'
+         + '<td>' + esc(g.homePlayerName || '') + '</td>'
+         + '<td class="r elo">' + esc(eloStr(g.homePlayerRating)) + '</td>'
+         + '<td class="c num">' + esc(fmtResult(g.homePlayerResult, g.awayPlayerResult)) + '</td>'
+         + '<td class="elo">' + esc(eloStr(g.awayPlayerRating)) + '</td>'
+         + '<td>' + esc(g.awayPlayerName || '') + '</td>'
+         + '</tr>';
+    });
+    h += '</tbody></table>';
+  });
+
+  // 2. Pořadí
+  h += '<h2>2. Pořadí družstev</h2>';
+  const hd = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
+  h += '<table class="stand"><thead><tr>'
+     + hd.map(function(x, i) { return '<th class="' + (i === 1 ? 'l' : 'c') + '">' + esc(x) + '</th>'; }).join('')
+     + '</tr></thead><tbody>';
+  d.teamList.forEach(function(t, idx) {
+    const vals = [
+      t.teamRank != null ? t.teamRank : (idx + 1), t.teamName || '',
+      t.matchesPlayed != null ? t.matchesPlayed : 0, t.matchWins != null ? t.matchWins : 0,
+      t.matchDraws != null ? t.matchDraws : 0, t.matchLosses != null ? t.matchLosses : 0,
+      t.points != null ? t.points : 0, fmtHalf(t.score), t.wonGames != null ? t.wonGames : 0
+    ];
+    h += '<tr>' + vals.map(function(v, i) {
+      return '<td class="' + (i === 1 ? 'l' : 'c') + '">' + esc(v) + '</td>';
+    }).join('') + '</tr>';
+  });
+  h += '</tbody></table>';
+
+  // 3. Různé
+  h += '<h2>3. Různé a ostatní</h2>';
+  if (d.poznamka) d.poznamka.split('\n').forEach(function(line) { h += '<p>' + esc(line) + '</p>'; });
+  if (d.jmeno) h += '<p><b>' + esc(d.jmeno) + '</b></p>';
+  h += '<p>' + esc(d.dateStr) + '</p>';
+
+  h += '</div>';
+  return h;
+}
+
+function downloadDocx() {
+  if (!_lastBlob) return;
+  const url = URL.createObjectURL(_lastBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = _lastFname; a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+}
+
+function printPreview() { window.print(); }
+
 /* ── Hlavní generátor ───────────────────────────────────────────── */
 async function generate() {
   const compId   = document.getElementById('compId').value.trim();
@@ -420,8 +537,6 @@ async function generate() {
 
     setMsg('Generuji soubor…');
     const blob = await docx.Packer.toBlob(doc);
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
 
     // Název souboru z šablony: [soutez] → compId, [kolo] → číslo kola
     const tpl = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
@@ -429,10 +544,28 @@ async function generate() {
                    .replace(/[\\/:*?"<>|]+/g, '_');   // ošetření nepovolených znaků
     if (!/\.docx$/i.test(fname)) fname += '.docx';
 
-    a.href = url; a.download = fname; a.click();
-    setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    _lastBlob = blob;
+    _lastFname = fname;
 
-    setMsg('✓ Staženo: ' + fname, 'ok');
+    // Náhled pod formulářem + lišta s tlačítky (žádné automatické stažení)
+    document.getElementById('output').innerHTML =
+      '<div id="dl-bar">'
+      + '<button id="btn-dl" onclick="downloadDocx()">⬇ Stáhnout soubor ' + esc(fname) + '</button>'
+      + '<button id="btn-pdf" onclick="printPreview()">Uložit jako PDF (tisk)</button>'
+      + '</div>'
+      + previewHtml({
+          kolo: kolo, compName: compName, regionName: regionName,
+          matchList: matchList, teamList: teamList,
+          poznamka: poznamka, jmeno: jmeno, dateStr: todayCz()
+        });
+
+    document.getElementById('msg').innerHTML =
+      '<span class="ok">✓ Hotovo — náhled níže. Soubor stáhneš tlačítkem nad dokumentem.</span>'
+      + '<div class="note">'
+      + '• Vzhled se mezi <b>zobrazeným náhledem</b>, <b>DOCX</b> a <b>tiskem</b> liší. '
+      + 'Nejlepšího výsledku dosáhnete stažením DOCX a exportem do PDF přímo z Office.<br>'
+      + '• Tabulka pořadí odpovídá <b>datu generování</b> zpravodaje — pořadí k předchozím kolům nelze vygenerovat.'
+      + '</div>';
 
   } catch (e) {
     setMsg('Chyba: ' + e.message, 'err');
