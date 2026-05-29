@@ -6,55 +6,129 @@
 <!-- v8.5.0 má interní TDZ bug v UMD bundlu; 7.8.2 je stabilní -->
 <script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
 <style>
-body { font-family: sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
-h2   { margin-bottom: 20px; }
-label { display: block; margin-top: 12px; font-size: 13px; color: #555; margin-bottom: 3px; }
+:root {
+  --bg:        #f4f5f7;
+  --card:      #ffffff;
+  --border:    #e4e7ec;
+  --text:      #1a1d23;
+  --muted:     #667085;
+  --field:     #d0d5dd;
+  --accent:    #4f46e5;
+  --accent-h:  #4338ca;
+  --accent-soft: rgba(79, 70, 229, .12);
+  --ok:        #15803d;
+  --err:       #dc2626;
+  --radius:    12px;
+  --shadow:    0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 720px; margin: 0 auto; padding: 48px 20px 80px;
+  color: var(--text); background: var(--bg);
+  line-height: 1.5; -webkit-font-smoothing: antialiased;
+}
+
+.page-title { margin: 0 0 4px; font-size: 24px; font-weight: 650; letter-spacing: -.01em; }
+.page-sub   { margin: 0 0 28px; font-size: 14px; color: var(--muted); }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+label {
+  display: block; margin-bottom: 6px;
+  font-size: 13px; font-weight: 550; color: #344054;
+}
+
 input, textarea {
-  width: 100%; padding: 6px 8px; font-size: 14px;
-  border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+  width: 100%; padding: 10px 12px; font-size: 14px;
+  font-family: inherit; color: var(--text);
+  border: 1px solid var(--field); border-radius: 8px; background: #fff;
+  transition: border-color .15s, box-shadow .15s;
 }
-textarea { height: 72px; font-family: sans-serif; resize: vertical; }
-.row { display: flex; gap: 12px; }
+input::placeholder, textarea::placeholder { color: #98a2b3; }
+input:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input[type=number]::-webkit-inner-spin-button { opacity: .4; }
+textarea { min-height: 78px; resize: vertical; }
+
+.field { margin-top: 18px; }
+.field:first-child { margin-top: 0; }
+.row { display: flex; gap: 16px; }
 .row > div { flex: 1; }
-button {
-  margin-top: 18px; padding: 9px 22px; font-size: 14px;
-  border: none; border-radius: 4px; cursor: pointer; color: white;
+
+.fname-preview {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 500;
+  color: var(--accent); font-size: 12.5px;
 }
-#btn-gen   { background: #2563eb; }
-#btn-gen:hover   { background: #1d4ed8; }
-#btn-clear { background: #6b7280; margin-left: 8px; }
-#btn-clear:hover { background: #4b5563; }
-#msg { margin-top: 10px; font-size: 13px; }
-.ok  { color: #16a34a; }
-.err { color: #dc2626; }
-.note { margin-top: 8px; font-size: 12px; color: #555; line-height: 1.45; }
+.hint { display: block; margin-top: 5px; font-size: 12px; color: var(--muted); font-weight: 400; }
+.hint code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  background: #eef0f4; color: #475467; padding: 1px 5px; border-radius: 4px;
+}
+
+/* ── Tlačítka ─────────────────────────────────────────────────── */
+button {
+  font-family: inherit; font-size: 14px; font-weight: 550;
+  padding: 10px 18px; border-radius: 8px; border: 1px solid transparent;
+  cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s;
+}
+button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
+
+.btn-primary   { background: var(--accent); color: #fff; }
+.btn-primary:hover   { background: var(--accent-h); }
+.btn-secondary { background: #fff; color: #344054; border-color: var(--field); }
+.btn-secondary:hover { background: #f9fafb; border-color: #c2c8d0; }
+
+#msg { margin-top: 14px; font-size: 13px; min-height: 18px; }
+.ok  { color: var(--ok); }
+.err { color: var(--err); }
+.note {
+  margin-top: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--muted);
+  line-height: 1.5; background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px;
+}
 
 /* ── Název soutěže pod polem ID ──────────────────────────────── */
-#compNameView { margin-top: 4px; font-size: 12px; color: #555; min-height: 16px; }
+#compNameView { margin-top: 6px; font-size: 12.5px; color: var(--muted); min-height: 17px; }
+#compNameView b { color: #344054; font-weight: 600; }
+#compNameView .region { display: block; }
 
-/* ── Historie posledních generování ──────────────────────────── */
-#history { margin-top: 16px; }
-#hist-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* ── Historie posledních generování (nahoře, dvouřádkové) ─────── */
+#history:empty { display: none; }
+#history:empty + .field { margin-top: 0; }
+#hist-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .hist-item {
-  margin-top: 0; padding: 5px 10px; font-size: 12px; color: #333;
-  background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px;
-  cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 14px; cursor: pointer; text-align: left;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(79, 70, 229, .28);
 }
-.hist-item:hover { background: #e5e7eb; }
-.hist-tpl { color: #888; font-family: monospace; }
+.hist-item:hover { background: rgba(79, 70, 229, .18); border-color: rgba(79, 70, 229, .45); }
+.hist-name { font-size: 13px; font-weight: 600; color: var(--accent-h); }
+.hist-tpl  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--accent); }
 
 /* ── Lišta se stažením + náhled dokumentu ────────────────────── */
-#output { margin-top: 30px; }
-#dl-bar { display: flex; gap: 10px; margin-bottom: 14px; }
-#btn-dl  { margin-top: 0; background: #16a34a; }
+#output { margin-top: 32px; }
+#dl-bar { display: flex; gap: 10px; margin-bottom: 16px; }
+#btn-dl  { background: #16a34a; color: #fff; }
 #btn-dl:hover  { background: #15803d; }
-#btn-pdf { margin-top: 0; background: #6b7280; }
-#btn-pdf:hover { background: #4b5563; }
+#btn-pdf { background: #fff; color: #344054; border-color: var(--field); }
+#btn-pdf:hover { background: #f9fafb; border-color: #c2c8d0; }
 
 .doc {
   background: #fff; color: #000; font-family: Arial, sans-serif;
-  border: 1px solid #ddd; box-shadow: 0 1px 5px rgba(0,0,0,.08);
-  padding: 30px 36px;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 36px 40px;
 }
 .doc-hdr { text-align: right; font-size: 11px; line-height: 1.25; margin-bottom: 8px; }
 .doc h1 { text-align: center; font-size: 20px; margin: 6px 0 16px; }
@@ -81,31 +155,44 @@ button {
 </head>
 <body>
 
-<h2>Zpravodaj soutěže — DOCX</h2>
+<h1 class="page-title">Zpravodaj soutěže</h1>
+<p class="page-sub">Generátor zpravodaje kola ŠSČR do DOCX</p>
 
-<div class="row">
-  <div>
-    <label>ID soutěže (compId)</label>
-    <input type="number" id="compId" value="3317">
-    <div id="compNameView"></div>
+<div class="card">
+  <div id="history"></div>
+
+  <div class="field row">
+    <div>
+      <label>ID soutěže</label>
+      <input type="number" id="compId" value="3317">
+      <div id="compNameView"></div>
+    </div>
+    <div>
+      <label>Číslo kola</label>
+      <input type="number" id="kolo" value="1">
+    </div>
   </div>
-  <div>
-    <label>Číslo kola</label>
-    <input type="number" id="kolo" value="1">
+
+  <div class="field">
+    <label>Doplňující text <span class="hint" style="display:inline">— sekce „Různé"</span></label>
+    <textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
   </div>
+
+  <div class="field">
+    <label>Název souboru: <span id="fnamePreview" class="fname-preview"></span></label>
+    <input type="text" id="fname" value="[soutez]_[kolo]">
+    <span class="hint">Placeholdery: <code>[soutez]</code> = ID soutěže, <code>[kolo]</code> = číslo kola</span>
+  </div>
+
+  <div class="actions">
+    <button id="btn-gen" class="btn-primary" onclick="generate()">Generovat</button>
+    <button id="btn-clear" class="btn-secondary" onclick="clearCache()"
+            title="V případě že došlo ke opravě výsledků na stránkách ŠSČR">Vymazat cache</button>
+  </div>
+
+  <div id="msg"></div>
 </div>
 
-<label>Doplňující text (sekce Různé)</label>
-<textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
-
-<label>Název souboru (placeholdery: [soutez] = ID soutěže, [kolo] = číslo kola)</label>
-<input type="text" id="fname" value="[soutez]_[kolo]">
-
-<div id="history"></div>
-
-<button id="btn-gen" onclick="generate()">Generovat</button>
-<button id="btn-clear" onclick="clearCache()">Vymazat cache</button>
-<div id="msg"></div>
 <div id="output"></div>
 
 <script>
@@ -556,10 +643,8 @@ async function generate() {
     const blob = await docx.Packer.toBlob(doc);
 
     // Název souboru z šablony: [soutez] → compId, [kolo] → číslo kola
-    const tpl = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
-    let fname = tpl.replace(/\[soutez\]/gi, compId).replace(/\[kolo\]/gi, kolo)
-                   .replace(/[\\/:*?"<>|]+/g, '_');   // ošetření nepovolených znaků
-    if (!/\.docx$/i.test(fname)) fname += '.docx';
+    const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
+    const fname = resolveFname(tpl, compId, kolo);
 
     _lastBlob = blob;
     _lastFname = fname;
@@ -598,6 +683,7 @@ async function generate() {
    tichý dotaz (neruší hlavní hlášku). */
 let _lookupTimer = null;
 let _lookupId    = null;   // ID, pro které už název máme / zjišťujeme
+let _fnameAuto   = true;   // název souboru je auto-návrh (uživatel ho neměnil)
 
 function scheduleLookup() {
   clearTimeout(_lookupTimer);
@@ -606,8 +692,68 @@ function scheduleLookup() {
 
 function nameLine(d, compId) {
   const name = d.compName || ('Soutěž ' + compId);
-  const reg  = d.regionName ? ' · ' + esc(d.regionName) : '';
-  return '<b>' + esc(name) + '</b>' + reg;
+  let html = '<b>' + esc(name) + '</b>';
+  if (d.regionName) html += '<span class="region">' + esc(d.regionName) + '</span>';
+  return html;
+}
+
+/* Sezóna podle dnešního data – nová začíná v září (měsíc 9).
+   Vrací poslední dvojčíslí obou let, např. "25_26". */
+function seasonYears() {
+  const d = new Date();
+  let start = d.getFullYear();
+  if (d.getMonth() < 8) start -= 1;   // led–srp ⇒ sezóna začala loni
+  const yy = function(n) { return ('0' + (n % 100)).slice(-2); };
+  return yy(start) + '_' + yy(start + 1);
+}
+
+/* Zkratka z názvu soutěže: první písmeno/číslice každého slova,
+   oddělovače (pomlčky apod.) se přeskočí. Diakritika odstraněna. */
+function abbrev(compName) {
+  if (!compName) return 'soutez';
+  const s = compName.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const letters = s.split(/[\s/]+/)
+    .map(function(w) { const m = w.match(/[a-zA-Z0-9]/); return m ? m[0] : ''; })
+    .filter(Boolean).join('');
+  return (letters || 'soutez').toLowerCase();
+}
+
+/* Navržená šablona názvu, např. "ksa_25_26_[kolo]". */
+function suggestFname(compName) {
+  return abbrev(compName) + '_' + seasonYears() + '_[kolo]';
+}
+
+/* Dosadí placeholdery a doplní příponu → výsledný název souboru.
+   Kolo v názvu vždy dvouciferné (1 → 01). */
+function resolveFname(tpl, compId, kolo) {
+  const k = /^\d+$/.test(kolo) ? kolo.padStart(2, '0') : kolo;
+  let f = (tpl || '[soutez]_[kolo]')
+            .replace(/\[soutez\]/gi, compId)
+            .replace(/\[kolo\]/gi, k)
+            .replace(/[\\/:*?"<>|]+/g, '_');   // nepovolené znaky
+  if (!/\.docx$/i.test(f)) f += '.docx';
+  return f;
+}
+
+/* Živý náhled výsledného názvu v popisku pole. */
+function updateFnamePreview() {
+  const tpl    = document.getElementById('fname').value;
+  const compId = document.getElementById('compId').value.trim();
+  const kolo   = document.getElementById('kolo').value.trim();
+  document.getElementById('fnamePreview').textContent = resolveFname(tpl, compId, kolo);
+}
+
+/* Doplní navržený název, jen pokud ho uživatel ručně neměnil. */
+function maybeSuggestFname(d) {
+  if (!_fnameAuto) return;
+  document.getElementById('fname').value = suggestFname(d.compName || '');
+  updateFnamePreview();
+}
+
+/* Starý generický default (před auto-návrhem) – bereme jako „auto",
+   ať ho nový návrh může přepsat. */
+function isLegacyTpl(t) {
+  return !t || t.trim() === '' || t.trim() === '[soutez]_[kolo]';
 }
 
 async function lookupCompName() {
@@ -619,13 +765,14 @@ async function lookupCompName() {
 
   const path = '/competitions/' + compId + '/details';
   const cached = getCached(path);
-  if (cached) { view.innerHTML = nameLine(cached, compId); return; }
+  if (cached) { view.innerHTML = nameLine(cached, compId); maybeSuggestFname(cached); return; }
 
   view.textContent = 'načítám název…';
   try {
     const d = await apiGet(path, null, true);   // tichý dotaz
     if (document.getElementById('compId').value.trim() !== compId) return; // ID se mezitím změnilo
     view.innerHTML = nameLine(d, compId);
+    maybeSuggestFname(d);
   } catch (e) {
     if (document.getElementById('compId').value.trim() === compId)
       view.innerHTML = '<span class="err">soutěž nenalezena</span>';
@@ -655,11 +802,15 @@ function renderHistory() {
   const box = document.getElementById('history');
   const h   = loadHistory();
   if (!h.length) { box.innerHTML = ''; return; }
-  let html = '<label>Historie (posledních ' + HMAX + ')</label><div id="hist-list">';
+  let html = '<div id="hist-list">';
   h.forEach(function(rec, i) {
     const name = rec.compName || ('Soutěž ' + rec.compId);
+    let tpl = rec.fname || '';
+    if (!/\.docx$/i.test(tpl)) tpl += '.docx';
     html += '<button type="button" class="hist-item" onclick="applyHistory(' + i + ')">'
-          + esc(name) + ' <span class="hist-tpl">' + esc(rec.fname) + '</span></button>';
+          + '<span class="hist-name">' + esc(name) + '</span>'
+          + '<span class="hist-tpl">' + esc(tpl) + '</span>'
+          + '</button>';
   });
   html += '</div>';
   box.innerHTML = html;
@@ -669,20 +820,35 @@ function applyHistory(i) {
   if (!rec) return;
   document.getElementById('compId').value = rec.compId;
   document.getElementById('fname').value  = rec.fname;
+  _fnameAuto = isLegacyTpl(rec.fname);   // reálná šablona = respektovat; starý default = přepsat návrhem
+  _lookupId = null;                      // vynutit re-lookup i pro stejné compId
+  updateFnamePreview();
   lookupCompName();
 }
 
 /* ── Inicializace ───────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('compId').addEventListener('input', scheduleLookup);
+  document.getElementById('compId').addEventListener('input', function() { scheduleLookup(); updateFnamePreview(); });
+  document.getElementById('kolo').addEventListener('input', updateFnamePreview);
+  // Jakmile uživatel název ručně upraví, přestaneme ho přepisovat návrhem
+  document.getElementById('fname').addEventListener('input', function() { _fnameAuto = false; updateFnamePreview(); });
 
   // Poslední záznam předvyplní soutěž + šablonu názvu
-  const h = loadHistory();
+  // Vyčisti staré „legacy" záznamy ([soutez]_[kolo]) z dřívějšího testování
+  let h = loadHistory();
+  const cleaned = h.filter(function(x) { return !isLegacyTpl(x.fname); });
+  if (cleaned.length !== h.length) {
+    try { localStorage.setItem(HKEY, JSON.stringify(cleaned)); } catch (e) {}
+    h = cleaned;
+  }
+
   if (h.length) {
     document.getElementById('compId').value = h[0].compId;
     document.getElementById('fname').value  = h[0].fname;
+    _fnameAuto = isLegacyTpl(h[0].fname);   // (reálná šablona ⇒ respektovat)
   }
   renderHistory();
+  updateFnamePreview();
   lookupCompName();
 });
 </script>
