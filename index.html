@@ -233,15 +233,15 @@ const B_S   = { style: 'single', size: 4, color: C_BORDER };
 const B_ALL = { top: B_S, bottom: B_S, left: B_S, right: B_S };
 
 /* ── Cache (localStorage) ──────────────────────────────────────────
-   TTL podle endpointu: výsledky kola (matches) jsou „skoro živé", proto
-   jen 10 min — prázdná/rozehraná tabulka zachycená těsně před doplněním
-   výsledků nesmí blokovat čerstvá data nadlouho (stejný princip jako proxy
-   v pgn-base, která to řeší taky krátkým TTL, ne skip-empty logikou).
-   Ostatní endpointy (details, table, schedule) 1 h. */
+   TTL podle endpointu: „skoro živá" data kola — výsledky (matches) i pořadí
+   (table) — držíme jen 10 min. Tabulka se přepočítává současně s výsledky,
+   takže po aktualizaci matches nesmí pořadí viset hodinu na starých datech.
+   (Stejný princip krátkého TTL jako proxy v pgn-base; ne skip-empty logikou.)
+   Ostatní endpointy (details, schedule) 1 h. */
 const TTL_DEFAULT = 3_600_000;   // 1 h
-const TTL_MATCHES =   600_000;   // 10 min
+const TTL_LIVE    =   600_000;   // 10 min (matches + table)
 function ttlFor(path) {
-  return /\/matches$/.test(path) ? TTL_MATCHES : TTL_DEFAULT;
+  return /\/(matches|table)$/.test(path) ? TTL_LIVE : TTL_DEFAULT;
 }
 function cacheKey(path) {
   return 'sscr_' + btoa(unescape(encodeURIComponent(path)));
@@ -269,10 +269,12 @@ function clearCache() {
 
 /* ── Rate-limitované API (max 1 req / s, viz API_INTERVAL) ──────── */
 let _apiTs = 0;
-async function apiGet(path, label, quiet) {
+async function apiGet(path, label, quiet, force) {
   label = label || path;
-  const hit = getCached(path);
-  if (hit !== null) { console.log('[cache hit]', path); return hit; }
+  if (!force) {
+    const hit = getCached(path);
+    if (hit !== null) { console.log('[cache hit]', path); return hit; }
+  }
   const wait = Math.max(0, _apiTs + API_INTERVAL - Date.now());
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   if (!quiet) setMsg('Načítám: ' + label + '…');
@@ -580,8 +582,13 @@ async function generate() {
 
   try {
     const details   = await apiGet('/competitions/' + compId + '/details', 'detaily soutěže');
-    const matches   = await apiGet('/competitions/' + compId + '/round/' + kolo + '/matches', 'výsledky');
-    const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí');
+    // Pořadí se přepočítává současně s výsledky kola. Když se výsledky načetly
+    // napřímo (cache miss/expirace, ne hit), vynuť přímé načtení i u tabulky,
+    // ať pořadí neviselo na starší (byť ještě platné) cache verzi.
+    const matchesPath = '/competitions/' + compId + '/round/' + kolo + '/matches';
+    const matchesFromCache = getCached(matchesPath) !== null;
+    const matches   = await apiGet(matchesPath, 'výsledky');
+    const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí', false, !matchesFromCache);
 
     let roundDate = '';
     try {

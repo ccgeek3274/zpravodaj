@@ -26,9 +26,9 @@ vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, resolveFname, computeNameWidth, ttlFor } = ctx;
 
-test('ttlFor — matches 10 min, ostatní 1 h', () => {
+test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
   assert.equal(ttlFor('/competitions/3327/round/2/matches'), 600000);
-  assert.equal(ttlFor('/competitions/3327/table'), 3600000);
+  assert.equal(ttlFor('/competitions/3327/table'), 600000);
   assert.equal(ttlFor('/competitions/3327/details'), 3600000);
   assert.equal(ttlFor('/competitions/3327/round/2/schedule'), 3600000);
 });
