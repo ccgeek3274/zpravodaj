@@ -1,0 +1,75 @@
+// Testy čistých funkcí z index.html (běží bez prohlížeče).
+//
+// Funkce jsou definované jako globální `function …()` uvnitř jediného inline
+// <script> v index.html. Vytáhneme jeho obsah a spustíme ho v izolovaném
+// vm-kontextu, kde:
+//   – `document` NEexistuje  → textWidthPx použije Node fallback (odhad šířky),
+//   – `window` je stub       → top-level addEventListener(DOMContentLoaded) projde,
+//   – `localStorage`/`docx`  → nejsou potřeba (volají se až uvnitř jiných funkcí).
+// Tak otestujeme logiku bez závislosti na DOM i na docx.js.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+// První <script> bez atributů je ten inline (CDN docx má <script src=…>).
+const m = html.match(/<script>([\s\S]*?)<\/script>/);
+assert.ok(m, 'inline <script> v index.html nenalezen');
+
+const ctx = { window: { addEventListener() {} }, console };
+vm.createContext(ctx);
+vm.runInContext(m[1], ctx);
+
+const { fmtHalf, abbrev, resolveFname, computeNameWidth } = ctx;
+
+test('fmtHalf — celé, půlky, nulová půlka, neplatný vstup', () => {
+  assert.equal(fmtHalf(null), '0');
+  assert.equal(fmtHalf(0), '0');
+  assert.equal(fmtHalf(0.5), '½');
+  assert.equal(fmtHalf(1), '1');
+  assert.equal(fmtHalf(1.5), '1½');
+  assert.equal(fmtHalf(2.5), '2½');
+  assert.equal(fmtHalf('3'), '3');
+  assert.equal(fmtHalf('abc'), 'abc'); // neparsovatelné → vrátí beze změny
+});
+
+test('abbrev — počáteční znaky slov, bez diakritiky, fallback', () => {
+  assert.equal(abbrev(''), 'soutez');
+  assert.equal(abbrev(null), 'soutez');
+  assert.equal(abbrev('Krajská soutěž A'), 'ksa');
+  assert.equal(abbrev('1. liga'), '1l');     // číslice i písmeno
+  assert.equal(abbrev('Přebor / sk. B'), 'psb'); // lomítko je oddělovač
+  assert.equal(abbrev('---'), 'soutez');     // jen oddělovače → fallback
+});
+
+test('resolveFname — placeholdery, dvouciferné kolo, přípona, sanitizace', () => {
+  assert.equal(resolveFname('[soutez]_[kolo]', '3327', '2'), '3327_02.docx');
+  assert.equal(resolveFname('[soutez]_[kolo]', '3327', '12'), '3327_12.docx');
+  assert.equal(resolveFname('', '3327', '1'), '3327_01.docx'); // prázdná šablona → default
+  assert.equal(resolveFname('rs_d_[kolo]', '99', '7'), 'rs_d_07.docx');
+  assert.equal(resolveFname('a/b:c', '1', '1'), 'a_b_c.docx');  // nepovolené znaky → _
+  assert.equal(resolveFname('hotovo.docx', '1', '1'), 'hotovo.docx'); // přípona se nepřidá 2×
+  assert.equal(resolveFname('[soutez]_[kolo]', '1', 'finále'), '1_finále.docx'); // nečíselné kolo beze změny
+});
+
+test('computeNameWidth — meze a monotónie', () => {
+  // Prázdný seznam → minimální šířka 1200 dxa.
+  assert.equal(computeNameWidth([]), 1200);
+
+  // Delší jméno musí dát širší (nebo stejný, kvůli stropu) sloupec než kratší.
+  const krat = computeNameWidth([{ homeTeamName: 'A', awayTeamName: 'B',
+    matchGames: [{ homePlayerName: 'Jan', awayPlayerName: 'Eva' }] }]);
+  const dlouhy = computeNameWidth([{ homeTeamName: 'A', awayTeamName: 'B',
+    matchGames: [{ homePlayerName: 'Bartoloměj Nejdelší-Příjmení', awayPlayerName: 'Eva' }] }]);
+  assert.ok(krat >= 1200, `krátké jméno pod minimem: ${krat}`);
+  assert.ok(dlouhy >= krat, `delší jméno nedalo širší sloupec: ${dlouhy} < ${krat}`);
+
+  // Nikdy nepřekročí strop (polovina zbylé šířky po pevných sloupcích).
+  const maxAllowed = computeNameWidth([{ homeTeamName: 'X'.repeat(200),
+    awayTeamName: 'Y', matchGames: [{ homePlayerName: 'Z'.repeat(200), awayPlayerName: '' }] }]);
+  assert.ok(maxAllowed < 9026, `šířka přesáhla obsah stránky: ${maxAllowed}`);
+});

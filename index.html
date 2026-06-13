@@ -218,7 +218,9 @@ const COL_ELO    = 640;
 // COL_NAME se počítá dynamicky podle nejdelšího jména (viz computeNameWidth)
 
 const FS = 20;             // 10 pt (half-points)
-const API_INTERVAL = 1000; // min. rozestup mezi voláními API (ms)
+// Min. rozestup mezi voláními API (ms). chess.cz v běžném provozu snese ~1 req/s
+// (stejně jako proxy v projektu pgn-base); ban hrozil jen při burst hamování.
+const API_INTERVAL = 1000;
 
 // Barvy (jen řetězce)
 const C_HDR    = 'C8D9F0';
@@ -255,7 +257,7 @@ function clearCache() {
   setMsg('Cache vymazána (' + keys.length + ' položek).', 'ok');
 }
 
-/* ── Rate-limitované API (max 1 req / 3,1 s) ───────────────────── */
+/* ── Rate-limitované API (max 1 req / s, viz API_INTERVAL) ──────── */
 let _apiTs = 0;
 async function apiGet(path, label, quiet) {
   label = label || path;
