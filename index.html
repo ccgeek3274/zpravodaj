@@ -232,7 +232,17 @@ const C_BORDER = 'AAAAAA';
 const B_S   = { style: 'single', size: 4, color: C_BORDER };
 const B_ALL = { top: B_S, bottom: B_S, left: B_S, right: B_S };
 
-/* ── Cache (localStorage, TTL 1 hod) ───────────────────────────── */
+/* ── Cache (localStorage) ──────────────────────────────────────────
+   TTL podle endpointu: výsledky kola (matches) jsou „skoro živé", proto
+   jen 10 min — prázdná/rozehraná tabulka zachycená těsně před doplněním
+   výsledků nesmí blokovat čerstvá data nadlouho (stejný princip jako proxy
+   v pgn-base, která to řeší taky krátkým TTL, ne skip-empty logikou).
+   Ostatní endpointy (details, table, schedule) 1 h. */
+const TTL_DEFAULT = 3_600_000;   // 1 h
+const TTL_MATCHES =   600_000;   // 10 min
+function ttlFor(path) {
+  return /\/matches$/.test(path) ? TTL_MATCHES : TTL_DEFAULT;
+}
 function cacheKey(path) {
   return 'sscr_' + btoa(unescape(encodeURIComponent(path)));
 }
@@ -241,7 +251,7 @@ function getCached(path) {
     const raw = localStorage.getItem(cacheKey(path));
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > 3_600_000) { localStorage.removeItem(cacheKey(path)); return null; }
+    if (Date.now() - ts > ttlFor(path)) { localStorage.removeItem(cacheKey(path)); return null; }
     return data;
   } catch (e) { return null; }
 }
@@ -270,6 +280,9 @@ async function apiGet(path, label, quiet) {
   const r = await fetch(API + path);
   if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
   const data = await r.json();
+  // TODO(nová sezóna): až bude jasné, jak vypadá odpověď „kolo ještě nemá
+  // výsledky", přidat sem pro /matches podmínku `if (!isEmpty(data)) setCache(...)`,
+  // ať se prázdné kolo neuloží ani na 10 min. Do té doby to kryje krátký TTL.
   setCache(path, data);
   return data;
 }

@@ -24,7 +24,14 @@ const ctx = { window: { addEventListener() {} }, console };
 vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
-const { fmtHalf, abbrev, resolveFname, computeNameWidth } = ctx;
+const { fmtHalf, abbrev, resolveFname, computeNameWidth, ttlFor } = ctx;
+
+test('ttlFor — matches 10 min, ostatní 1 h', () => {
+  assert.equal(ttlFor('/competitions/3327/round/2/matches'), 600000);
+  assert.equal(ttlFor('/competitions/3327/table'), 3600000);
+  assert.equal(ttlFor('/competitions/3327/details'), 3600000);
+  assert.equal(ttlFor('/competitions/3327/round/2/schedule'), 3600000);
+});
 
 test('fmtHalf — celé, půlky, nulová půlka, neplatný vstup', () => {
   assert.equal(fmtHalf(null), '0');
