@@ -6,7 +6,8 @@ dokument `.docx`.
 
 ## Použití
 
-Otevři `src/index.html` v prohlížeči. Vyplň:
+Otevři `index.html` v prohlížeči (nebo nasazenou stránku na Cloudflare Pages).
+Vyplň:
 
 - **ID soutěže (compId)** a **číslo kola**
 - volitelně doplňující text do sekce *Různé*
@@ -26,13 +27,31 @@ Klikni na **Generovat DOCX**.
 - Tabulky se nedělí mezi stránky (`cantSplit` + `keepNext`).
 - Jméno vedoucího se bere z API (`compManagerName`).
 
+## Nasazení (Cloudflare Pages)
+
+Statická stránka bez build kroku. V Cloudflare dashboardu:
+
+1. **Workers & Pages → Create → Pages → Connect to Git** a vyber tento repozitář.
+2. **Build command** nech prázdné, **Build output directory** nastav na `/` (root).
+3. Deploy. Každý push do `main` se nasadí automaticky.
+
+API chess.cz posílá `Access-Control-Allow-Origin: *`, takže frontend volá
+`https://api.chess.cz/api` napřímo — žádný backend ani proxy není potřeba.
+
 ## Vývoj a testování
 
-Generátor běží v prohlížeči (knihovna `docx` v7.8.2 z CDN). Lokálně lze logiku
-otestovat v Node — viz historie commitů / poznámky k extrakci `<script>` z HTML
-a renderu přes LibreOffice.
+Generátor běží v prohlížeči (knihovna `docx` v7.8.2 z CDN). Čisté funkce
+(`fmtHalf`, `abbrev`, `resolveFname`, `computeNameWidth`) jsou pokryté testy:
+
+```
+npm test
+```
+
+Testy (`test/pure.test.js`) vytáhnou inline `<script>` z `index.html` a spustí
+ho v Node bez DOM — bez instalace závislostí.
 
 ## Adresáře
 
-- `src/` — zdrojový kód aplikace
+- `index.html` — celá aplikace (jeden soubor)
+- `test/` — testy čistých funkcí (`node --test`)
 - `docs/` — referenční podklady a generované ukázky (mimo git)
