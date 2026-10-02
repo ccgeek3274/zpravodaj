@@ -15,7 +15,10 @@ Práce má tři kroky:
    Klikni na **Generovat**.
 2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem
-   (řádek „Rozhodčí: …“ přes celou šířku tabulky) a text sekce *Různé*.
+   (řádek „Rozhodčí: …“ přes celou šířku tabulky) a celou sekci *Různé*
+   včetně jména vedoucího a data. Různé má lištu: **tučně**, *kurzíva*,
+   podtržení, odrážky, velikost písma (9–16 pt) a ↺ návrat k výchozímu textu.
+   Ze schránky se vkládá jen prostý text.
    Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
    DOCX** nebo **Stáhnout PDF**. Obojí se sestaví až teď, se všemi úpravami.

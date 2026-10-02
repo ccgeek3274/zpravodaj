@@ -167,7 +167,24 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 .doc .ed { outline:none; background:#fff6cc; box-shadow:inset 0 -1px 0 #c9a227; border-radius:1px; }
 .doc .ed:focus { background:#ffeb99; }
 .doc span.ed { display:inline-block; min-width:12em; vertical-align:bottom; }
-.doc div.ed { white-space:pre-wrap; line-height:23.5px; min-height:23.5px; margin-bottom:6.67px; }
+/* Editor sekce Různé — bloky jako odstavce DOCX (after 100 DXA = 6,67 px) */
+.doc .rich { min-height:60px; padding:2px 0; }
+.doc .rich > div, .doc .rich > p { margin:0 0 6.67px; min-height:16.9px; }
+.doc .rich ul, .doc .rich ol { margin:0; padding-left:24px; }
+.doc .rich li { margin:0 0 6.67px; }
+.doc .rich font[size="1"] { font-size:10.67px; } .doc .rich font[size="2"] { font-size:12px; }
+.doc .rich font[size="3"] { font-size:14.67px; } .doc .rich font[size="4"] { font-size:16px; }
+.doc .rich font[size="5"] { font-size:18.67px; } .doc .rich font[size="6"] { font-size:21.33px; }
+.doc .rich font[size="7"] { font-size:24px; }
+/* Lišta editoru — UI prvek uvnitř „papíru“, v tisku skrytá */
+.rich-bar { display:flex; gap:4px; align-items:center; flex-wrap:wrap; margin:0 0 6px;
+  font-family:var(--mono); }
+.rich-bar button, .rich-bar select { height:28px; min-width:30px; padding:0 8px; font-size:13px;
+  background:var(--field-bg); color:var(--ink); border:1px solid var(--field-bd); border-radius:var(--radius); }
+.rich-bar select { width:auto; font-family:var(--mono); cursor:pointer; }
+.rich-bar button:hover { background:var(--highlight); }
+.rich-bar button.on { background:var(--ink); color:var(--cream); border-color:var(--ink); }
+.rich-bar #richReset { margin-left:auto; }
 
 @media (max-width:640px) {
   body { padding:32px 16px 60px; }
@@ -183,6 +200,7 @@ input:disabled { opacity:.6; cursor:not-allowed; }
   .doc, .doc * { visibility:visible; }
   .doc { position:absolute; left:0; top:0; width:auto; border:none; padding:0; }
   .doc .ed { background:none; box-shadow:none; }
+  .rich-bar { display:none; }
 }
 </style>
 </head>
@@ -656,7 +674,7 @@ function gap() {
    sekce Různé) se píšou sem; DOCX se z toho sestaví až při stažení. */
 const DEFAULT_POZNAMKA = 'Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.';
 let _doc = null;      // { compId, kolo, compName, regionName, jmeno, dateStr, matchList, teamList, nameW, refs[] }
-let _poznamka = DEFAULT_POZNAMKA;
+let _rozne = '';      // HTML obsah editoru sekce Různé (přežije překreslení náhledu)
 let _withRef = true;  // přepínač Rozhodčí
 
 function esc(s) {
@@ -679,8 +697,131 @@ function standingsVals(t, idx) {
   ];
 }
 
+/* ── Sekce Různé: jednoduchý formátovaný text ─────────────────────
+   Editor (contenteditable) umí tučné / kurzívu / podtržení, odrážky
+   a velikost písma. Jeho DOM se převede na model bloků
+     [{ li: bool, runs: [{ text, b, i, u, size(pt) }] }]
+   a z modelu se sestaví DOCX i PDF. Vkládání ze schránky je jen
+   prostý text, takže v editoru je jen to, co vyrobí lišta. */
+const RICH_BASE_PT = 11;
+// <font size="N"> (execCommand fontSize) → pt
+const FONT_SIZE_PT = { 1: 8, 2: 9, 3: 11, 4: 12, 5: 14, 6: 16, 7: 18 };
+
+function defaultRozne(d) {
+  let h = '<div>' + esc(DEFAULT_POZNAMKA) + '</div>';
+  if (d.jmeno) h += '<div><b>' + esc(d.jmeno) + '</b></div>';
+  h += '<div>' + esc(d.dateStr) + '</div>';
+  return h;
+}
+
+const RICH_BLOCK = { DIV: 1, P: 1, LI: 1, UL: 1, OL: 1, H1: 1, H2: 1, H3: 1, BLOCKQUOTE: 1 };
+
+function cssSizePt(v) {
+  const m = /^([\d.]+)(px|pt)$/.exec(String(v || '').trim());
+  if (!m) return null;
+  return m[2] === 'pt' ? +m[1] : Math.round(+m[1] * 0.75 * 2) / 2;
+}
+
+/* DOM editoru → model bloků (čistá funkce nad DOM uzly). */
+function richBlocks(root) {
+  const blocks = [];
+  let cur = null;
+  function open(li) { cur = { li: li, runs: [] }; blocks.push(cur); return cur; }
+  function walk(node, st, li) {
+    [].forEach.call(node.childNodes, function(n) {
+      if (n.nodeType === 3) {                       // text
+        const t = n.nodeValue.replace(/\s+/g, ' ');
+        if (!t || (!cur && !t.trim())) return;       // mezery mezi bloky nezakládají řádek
+        if (!cur) open(li);
+        cur.runs.push({ text: t, b: !!st.b, i: !!st.i, u: !!st.u, size: st.size || null });
+        return;
+      }
+      if (n.nodeType !== 1) return;
+      const tag = n.nodeName;
+      if (tag === 'BR') {                           // konec řádku; <br> na prázdném řádku = prázdný blok
+        if (!cur) open(li);
+        cur = null;
+        return;
+      }
+      if (RICH_BLOCK[tag]) {
+        // blok se založí až s prvním obsahem (vnořené <div><div> nedělají prázdné řádky)
+        const inLi = li || tag === 'LI' || tag === 'UL' || tag === 'OL';
+        const before = blocks.length;
+        cur = null;
+        walk(n, st, inLi);
+        if (blocks.length === before && tag !== 'UL' && tag !== 'OL') open(inLi);   // prázdný řádek
+        cur = null;
+        return;
+      }
+      const ns = Object.assign({}, st);
+      if (tag === 'B' || tag === 'STRONG') ns.b = true;
+      if (tag === 'I' || tag === 'EM') ns.i = true;
+      if (tag === 'U') ns.u = true;
+      if (tag === 'FONT' && n.getAttribute('size')) ns.size = FONT_SIZE_PT[n.getAttribute('size')] || ns.size;
+      const sty = n.style || {};
+      if (/^(bold|[6-9]00)$/.test(sty.fontWeight || '')) ns.b = true;
+      if (sty.fontStyle === 'italic') ns.i = true;
+      if (/underline/.test(sty.textDecoration || sty.textDecorationLine || '')) ns.u = true;
+      if (sty.fontSize && cssSizePt(sty.fontSize)) ns.size = cssSizePt(sty.fontSize);
+      walk(n, ns, li);
+    });
+  }
+  walk(root, {}, false);
+  // ořízni mezery na krajích bloků, prázdné bloky na konci pryč
+  blocks.forEach(function(bl) {
+    if (bl.runs.length) {
+      bl.runs[0].text = bl.runs[0].text.replace(/^ /, '');
+      const l = bl.runs[bl.runs.length - 1]; l.text = l.text.replace(/ $/, '');
+      bl.runs = bl.runs.filter(function(r) { return r.text; });
+    }
+  });
+  while (blocks.length && !blocks[blocks.length - 1].runs.length) blocks.pop();
+  return blocks;
+}
+
+/* Model → odstavce DOCX. Prázdný blok = prázdný řádek. */
+function richDocx(blocks) {
+  return blocks.map(function(bl) {
+    return new docx.Paragraph({
+      spacing: { before: 0, after: 100 },
+      bullet: bl.li ? { level: 0 } : undefined,
+      children: bl.runs.map(function(r) {
+        return new docx.TextRun({
+          text: r.text, font: 'Arial', size: Math.round((r.size || RICH_BASE_PT) * 2),
+          bold: r.b || undefined, italics: r.i || undefined, underline: r.u ? {} : undefined,
+        });
+      }),
+    });
+  });
+}
+
+/* Model → obsah pdfmake (po sobě jdoucí odrážky = jeden seznam). */
+function richPdf(blocks) {
+  const out = [];
+  let ul = null;
+  blocks.forEach(function(bl) {
+    const runs = bl.runs.map(function(r) {
+      const o = { text: r.text };
+      if (r.b) o.bold = true;
+      if (r.i) o.italics = true;
+      if (r.u) o.decoration = 'underline';
+      if (r.size) o.fontSize = r.size;
+      return o;
+    });
+    const node = { text: runs.length ? runs : ' ', margin: [0, 0, 0, pt(100)] };
+    if (bl.li) {
+      if (!ul) { ul = { ul: [], margin: [0, 0, 0, 0] }; out.push(ul); }
+      ul.ul.push(node);
+    } else {
+      ul = null;
+      out.push(node);
+    }
+  });
+  return out;
+}
+
 /* ── HTML náhled — rozměry tabulek 1:1 s DOCX ───────────────────── */
-function previewHtml(d, withRef, poznamka) {
+function previewHtml(d, withRef, rozne) {
   let h = '<div class="doc">';
 
   const hdr = [d.regionName, d.compName].filter(Boolean).map(esc).join('<br>');
@@ -733,9 +874,20 @@ function previewHtml(d, withRef, poznamka) {
 
   // 3. Různé — text je upravitelný přímo v náhledu
   h += '<div class="d-h">3. Různé a ostatní</div>';
-  h += '<div class="ed" id="pozn" contenteditable="plaintext-only">' + esc(poznamka) + '</div>';
-  if (d.jmeno) h += '<div class="d-p" style="margin-top:5.33px"><b>' + esc(d.jmeno) + '</b></div>';
-  h += '<div class="d-p">' + esc(d.dateStr) + '</div>';
+  h += '<div class="rich-bar" id="richBar">'
+     + '<button type="button" data-cmd="bold" title="Tučně (Ctrl/⌘+B)"><b>B</b></button>'
+     + '<button type="button" data-cmd="italic" title="Kurzíva (Ctrl/⌘+I)"><i>I</i></button>'
+     + '<button type="button" data-cmd="underline" title="Podtržení (Ctrl/⌘+U)"><u>U</u></button>'
+     + '<button type="button" data-cmd="insertUnorderedList" title="Odrážky">• —</button>'
+     + '<select id="richSize" title="Velikost písma">'
+     + [2, 3, 4, 5, 6].map(function(n) {
+         return '<option value="' + n + '"' + (n === 3 ? ' selected' : '') + '>' + FONT_SIZE_PT[n] + ' pt</option>';
+       }).join('')
+     + '</select>'
+     + '<button type="button" id="richReset" title="Vrátit výchozí text">↺</button>'
+     + '</div>';
+  // rozne je HTML z vlastního editoru (vkládání ze schránky jen jako prostý text)
+  h += '<div class="ed rich" id="pozn" contenteditable="true">' + rozne + '</div>';
 
   h += '</div>';
   return h;
@@ -745,7 +897,7 @@ function previewHtml(d, withRef, poznamka) {
 function renderPreview() {
   if (!_doc) return;
   const box = document.getElementById('preview');
-  box.innerHTML = previewHtml(_doc, _withRef, _poznamka);
+  box.innerHTML = previewHtml(_doc, _withRef, _rozne);
   [].forEach.call(box.querySelectorAll('[data-ref]'), function(el) {
     el.addEventListener('input', function() { _doc.refs[+el.dataset.ref] = el.innerText.replace(/\s+/g, ' '); });
     // jméno je jednořádkové: Enter = přejdi na další rozhodčí / opusť pole
@@ -756,12 +908,51 @@ function renderPreview() {
       if (next) next.focus(); else el.blur();
     });
   });
-  const pz = document.getElementById('pozn');
-  pz.addEventListener('input', function() { _poznamka = pz.innerText.replace(/\n+$/, ''); });
+  wireRichEditor();
+}
+
+/* Lišta editoru Různé: příkazy execCommand (podporují všechny prohlížeče),
+   tlačítka nekradou fokus, stav B/I/U/odrážek se zvýrazňuje podle kurzoru. */
+function wireRichEditor() {
+  const ed = document.getElementById('pozn'), bar = document.getElementById('richBar');
+  const size = document.getElementById('richSize');
+  try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) {}
+  function save() { _rozne = ed.innerHTML; }
+  function refresh() {
+    [].forEach.call(bar.querySelectorAll('[data-cmd]'), function(b) {
+      let on = false;
+      try { on = document.queryCommandState(b.dataset.cmd); } catch (e) {}
+      b.classList.toggle('on', on && ed.contains(document.getSelection().anchorNode));
+    });
+  }
+  [].forEach.call(bar.querySelectorAll('button'), function(b) {
+    b.addEventListener('mousedown', function(e) { e.preventDefault(); });   // ponech výběr v editoru
+  });
+  [].forEach.call(bar.querySelectorAll('[data-cmd]'), function(b) {
+    b.addEventListener('click', function() {
+      ed.focus(); document.execCommand(b.dataset.cmd, false, null); save(); refresh();
+    });
+  });
+  size.addEventListener('change', function() {
+    ed.focus(); document.execCommand('fontSize', false, size.value); save();
+  });
+  document.getElementById('richReset').addEventListener('click', function() {
+    if (!confirm('Vrátit sekci Různé na výchozí text? Úpravy se ztratí.')) return;
+    _rozne = defaultRozne(_doc); ed.innerHTML = _rozne;
+  });
+  ed.addEventListener('input', save);
+  ed.addEventListener('keyup', refresh);
+  ed.addEventListener('mouseup', refresh);
+  // Vložení jen jako prostý text — žádné cizí formátování z Wordu/webu
+  ed.addEventListener('paste', function(e) {
+    e.preventDefault();
+    const t = (e.clipboardData || window.clipboardData).getData('text/plain');
+    document.execCommand('insertText', false, t);
+  });
 }
 
 /* ── Sestavení DOCX ze stavu (až při stažení) ───────────────────── */
-function buildDocx(d, withRef, poznamka) {
+function buildDocx(d, withRef, blocks) {
   const children = [
     para('Zpravodaj z kola č. ' + d.kolo, { bold: true, align: 'center', size: 32, after: 160 }),
     para('1. Výsledky', { bold: true, size: FS, before: 60, after: 80 }),
@@ -777,11 +968,7 @@ function buildDocx(d, withRef, poznamka) {
   children.push(buildStandingsTable(d.teamList));
   children.push(para('3. Různé a ostatní', { bold: true, size: FS, before: 200, after: 80 }));
 
-  String(poznamka || '').trim().split('\n').forEach(function(line) {
-    if (line.trim()) children.push(para(line));
-  });
-  if (d.jmeno) children.push(para(d.jmeno, { bold: true, before: 80 }));
-  children.push(para(d.dateStr));
+  richDocx(blocks).forEach(function(p) { children.push(p); });
 
   /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
   const headerLines = [];
@@ -822,7 +1009,7 @@ async function downloadDocx() {
   btn.disabled = true;
   try {
     setMsg('Sestavuji DOCX…', null, 'dlMsg');
-    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, _poznamka));
+    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, richBlocks(document.getElementById('pozn'))));
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo);
     const url = URL.createObjectURL(blob);
@@ -884,7 +1071,7 @@ const PDF_TABLE_LAYOUT = {
   paddingTop: function() { return 1.2; }, paddingBottom: function() { return 1.2; },
 };
 
-function buildPdfDef(d, withRef, poznamka) {
+function buildPdfDef(d, withRef, blocks) {
   const HDR = '#' + C_HDR, ALT = '#' + C_ALT;
   const content = [
     { text: 'Zpravodaj z kola č. ' + d.kolo, bold: true, fontSize: 16, alignment: 'center', margin: [0, 0, 0, pt(160)] },
@@ -935,11 +1122,7 @@ function buildPdfDef(d, withRef, poznamka) {
                  layout: PDF_TABLE_LAYOUT, fontSize: 10, unbreakable: true });
 
   content.push({ text: '3. Různé a ostatní', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
-  String(poznamka || '').trim().split('\n').forEach(function(line) {
-    if (line.trim()) content.push({ text: line, margin: [0, 0, 0, pt(100)] });
-  });
-  if (d.jmeno) content.push({ text: d.jmeno, bold: true, margin: [0, pt(80), 0, pt(100)] });
-  content.push({ text: d.dateStr });
+  richPdf(blocks).forEach(function(n) { content.push(n); });
 
   const hdrLines = [d.regionName, d.compName].filter(Boolean).join('\n');
   return {
@@ -963,7 +1146,7 @@ async function downloadPdf() {
     await loadPdfMake();
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo, 'pdf');
-    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, _poznamka)).download(fname);
+    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, richBlocks(document.getElementById('pozn')))).download(fname);
     saveHistoryEntry({ compId: _doc.compId, compName: _doc.compName, fname: tpl, ts: Date.now() });
     setMsg('✓ Staženo: ' + esc(fname), 'ok', 'dlMsg');
   } catch (e) {
@@ -1009,6 +1192,8 @@ async function generate() {
       nameW:      computeNameWidth(matchList),
       refs:       keepRefs ? _doc.refs : matchList.map(function() { return ''; }),
     };
+    // Různé obsahuje jméno vedoucího a datum → pro jinou soutěž/kolo výchozí text
+    if (!keepRefs || !_rozne) _rozne = defaultRozne(_doc);
 
     renderPreview();
     document.getElementById('sec-preview').classList.remove('hidden');

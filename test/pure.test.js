@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
-        matchCols, standingsCols, refLine, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, refLine, richBlocks, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
@@ -168,4 +168,39 @@ test('seasonYears / suggestFname — sezóna soutěže, ne dnešní datum', () =
   assert.equal(seasonYears('2009'), '09_10');
   assert.match(seasonYears(), /^\d\d_\d\d$/);            // fallback podle data
   assert.equal(suggestFname("Regionální soutěž 'D'", 2025), 'rsd_25_26_[kolo]');
+});
+
+// ── richBlocks nad minimálním falešným DOM ───────────────────────
+function txt(v) { return { nodeType: 3, nodeValue: v }; }
+function el(tag, attrs, ...kids) {
+  const n = { nodeType: 1, nodeName: tag, childNodes: kids, style: (attrs && attrs.style) || {},
+              getAttribute: k => (attrs && attrs[k] != null ? String(attrs[k]) : null) };
+  kids.forEach((k, i) => { k.nextSibling = kids[i + 1] || null; });
+  return n;
+}
+const root = (...kids) => el('DIV', null, ...kids);
+const simple = bs => plain(bs).map(b => (b.li ? '• ' : '') + b.runs.map(r =>
+  (r.b ? '*' : '') + (r.i ? '/' : '') + (r.u ? '_' : '') + (r.size ? r.size + ':' : '') + r.text).join('|'));
+
+test('richBlocks — řádky z <div>, první řádek jako holý text (Chrome)', () => {
+  const r = root(txt('Prosím o kontrolu.'), el('DIV', null, el('B', null, txt('Karel Jukl'))),
+                 el('DIV', null, txt('2. 10. 2026')));
+  assert.deepEqual(simple(richBlocks(r)), ['Prosím o kontrolu.', '*Karel Jukl', '2. 10. 2026']);
+});
+
+test('richBlocks — B/I/U, <font size>, CSS styly, vnořené formáty', () => {
+  const r = root(el('DIV', null, txt('a '), el('B', null, txt('b '), el('I', null, txt('c'))), txt(' '),
+    el('U', null, txt('d')), txt(' '), el('FONT', { size: 5 }, txt('e')), txt(' '),
+    el('SPAN', { style: { fontWeight: '700', fontSize: '12pt' } }, txt('f'))));
+  assert.deepEqual(simple(richBlocks(r)), ['a |*b |*/c| |_d| |14:e| |*12:f']);
+});
+
+test('richBlocks — odrážky, prázdný řádek, <br>, mezery mezi bloky, koncové prázdné řádky', () => {
+  const r = root(txt('\n  '), el('DIV', null, txt('úvod')), txt('\n'),
+    el('UL', null, txt('\n'), el('LI', null, txt('jedna')), el('LI', null, el('B', null, txt('dvě')))),
+    el('DIV', null, el('BR', null)),
+    el('DIV', null, txt('x'), el('BR', null), txt('y')),
+    el('DIV', null, el('DIV', null, txt('vnořený'))),
+    el('DIV', null, el('BR', null)));
+  assert.deepEqual(simple(richBlocks(r)), ['úvod', '• jedna', '• *dvě', '', 'x', 'y', 'vnořený']);
 });
