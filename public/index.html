@@ -2,198 +2,219 @@
 <html lang="cs">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zpravodaj soutěže</title>
-<!-- v8.5.0 má interní TDZ bug v UMD bundlu; 7.8.2 je stabilní -->
-<script src="https://unpkg.com/docx@7.8.2/build/index.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- v8.5.0 má interní TDZ bug v UMD bundlu; 7.8.2 je stabilní. Na cdnjs docx není. -->
+<script src="https://cdn.jsdelivr.net/npm/docx@7.8.2/build/index.js"
+        integrity="sha384-zjTqOObJTD6OT6CUn8mSpDY+crIiP0cX457OjcZosSATiUFbmdXa9KRScjfLVxFH"
+        crossorigin="anonymous"></script>
+<script src="https://app.sachytynec.cz/back.js" defer></script>
 <style>
 :root {
-  --bg:        #f4f5f7;
-  --card:      #ffffff;
-  --border:    #e4e7ec;
-  --text:      #1a1d23;
-  --muted:     #667085;
-  --field:     #d0d5dd;
-  --accent:    #4f46e5;
-  --accent-h:  #4338ca;
-  --accent-soft: rgba(79, 70, 229, .12);
-  --ok:        #15803d;
-  --err:       #dc2626;
-  --radius:    12px;
-  --shadow:    0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+  /* Paper & Ink — stejný jazyk jako sscr-soupiska a kontrolasoupisky */
+  --ink:        oklch(0.22 0.008 60);
+  --paper:      oklch(0.955 0.012 88);
+  --header:     oklch(0.925 0.013 86);
+  --screen:     oklch(0.20 0.006 60);
+  --field-bg:   oklch(0.99 0.004 88);
+  --field-bd:   oklch(0.55 0.012 60);
+  --divider:    oklch(0.85 0.012 78);
+  --muted:      oklch(0.45 0.012 60);
+  --muted-2:    oklch(0.50 0.012 60);
+  --muted-dark: oklch(0.70 0.012 75);
+  --highlight:  oklch(0.91 0.012 84);
+  --cream:      oklch(0.95 0.012 88);
+  --radius: 3px;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --sans: 'Hanken Grotesk', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --ok:#1f7a3d; --err:#b3261e; --warn:#9a5b15;
 }
-
-* { box-sizing: border-box; }
-
+* { box-sizing:border-box; }
+html, body { margin:0; padding:0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  max-width: 720px; margin: 0 auto; padding: 48px 20px 80px;
-  color: var(--text); background: var(--bg);
-  line-height: 1.5; -webkit-font-smoothing: antialiased;
+  font-family:var(--sans); background:var(--screen); color:var(--ink);
+  padding:52px 24px 80px; line-height:1.5;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }
+.wrap { max-width:820px; margin:0 auto; }
 
-.page-title { margin: 0 0 4px; font-size: 24px; font-weight: 650; letter-spacing: -.01em; }
-.page-sub   { margin: 0 0 28px; font-size: 14px; color: var(--muted); }
+.app-head { margin-bottom:28px; }
+.checker { height:7px; width:116px; border-radius:2px; margin-bottom:18px;
+  background:repeating-conic-gradient(oklch(0.95 0.012 88) 0 90deg, oklch(0.34 0.01 60) 0 180deg) 0 0 / 14px 14px; }
+.app-title { font-family:var(--mono); font-size:28px; font-weight:700; letter-spacing:0.04em;
+  text-transform:uppercase; color:var(--cream); line-height:1.1; margin:0; }
+.app-sub { font-size:14.5px; color:var(--muted-dark); margin:10px 0 0; }
 
-.card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow);
-  padding: 24px;
-}
+.card { background:var(--paper); border:1px solid var(--ink); border-radius:var(--radius); }
+.card-strip { display:flex; align-items:center; gap:12px; padding:15px 20px;
+  border-bottom:1px solid var(--ink); background:var(--header); border-radius:2px 2px 0 0; }
+.card-strip h2 { margin:0; font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:0.03em;
+  text-transform:uppercase; color:var(--ink); }
+.strip-right { margin-left:auto; font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+.card-body { padding:20px; }
 
-label {
-  display: block; margin-bottom: 6px;
-  font-size: 13px; font-weight: 550; color: #344054;
-}
-
+.eyebrow { font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:0.06em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:7px; display:block; }
 input, textarea {
-  width: 100%; padding: 10px 12px; font-size: 14px;
-  font-family: inherit; color: var(--text);
-  border: 1px solid var(--field); border-radius: 8px; background: #fff;
-  transition: border-color .15s, box-shadow .15s;
-}
-input::placeholder, textarea::placeholder { color: #98a2b3; }
-input:focus, textarea:focus {
-  outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-input[type=number]::-webkit-inner-spin-button { opacity: .4; }
-textarea { min-height: 78px; resize: vertical; }
+  width:100%; padding:11px 14px; font-family:var(--sans); font-size:14.5px; color:var(--ink);
+  background:var(--field-bg); border:1px solid var(--field-bd); border-radius:var(--radius);
+  transition:border-color .15s; }
+input { height:44px; padding:0 14px; }
+input[type=number], #fname { font-family:var(--mono); }
+textarea { min-height:78px; resize:vertical; line-height:1.6; }
+input::placeholder, textarea::placeholder { color:var(--field-bd); }
+input:focus, textarea:focus { outline:none; border-color:var(--ink); }
+.hint { display:block; margin-top:7px; font-size:12px; color:var(--muted-2); line-height:1.5;
+  font-family:var(--sans); font-weight:400; letter-spacing:0; text-transform:none; }
+.hint code { font-family:var(--mono); font-size:11.5px; background:var(--highlight);
+  color:oklch(0.28 0.008 60); padding:1px 6px; border-radius:2px; }
 
-.field { margin-top: 18px; }
-.field:first-child { margin-top: 0; }
-.row { display: flex; gap: 16px; }
-.row > div { flex: 1; }
+.field { margin-top:18px; }
+.field:first-child { margin-top:0; }
+.row { display:grid; grid-template-columns:1fr 160px; gap:14px; align-items:start; }
 
-.fname-preview {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 500;
-  color: var(--accent); font-size: 12.5px;
-}
-.hint { display: block; margin-top: 5px; font-size: 12px; color: var(--muted); font-weight: 400; }
-.hint code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
-  background: #eef0f4; color: #475467; padding: 1px 5px; border-radius: 4px;
-}
+.fname-preview { font-family:var(--mono); font-weight:600; color:var(--ink);
+  text-transform:none; letter-spacing:0; }
 
 /* ── Tlačítka ─────────────────────────────────────────────────── */
-button {
-  font-family: inherit; font-size: 14px; font-weight: 550;
-  padding: 10px 18px; border-radius: 8px; border: 1px solid transparent;
-  cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s;
-}
-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+button { font-family:var(--mono); cursor:pointer; border-radius:var(--radius);
+  border:1px solid transparent; transition:filter .15s, background .15s, opacity .15s; }
+button:disabled { opacity:.45; cursor:not-allowed; }
+button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+.actions { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; align-items:center; }
+.btn-primary { background:var(--ink); color:var(--cream); border-color:var(--ink);
+  font-size:14px; font-weight:600; height:44px; padding:0 22px; letter-spacing:0.02em; }
+.btn-primary:hover:not(:disabled) { filter:brightness(1.35); }
+.btn-outline { background:var(--paper); color:var(--ink); border:1px solid var(--ink);
+  font-size:13px; font-weight:600; height:44px; padding:0 16px; }
+.btn-outline:hover:not(:disabled) { background:var(--header); }
 
-.actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
-
-.btn-primary   { background: var(--accent); color: #fff; }
-.btn-primary:hover   { background: var(--accent-h); }
-.btn-secondary { background: #fff; color: #344054; border-color: var(--field); }
-.btn-secondary:hover { background: #f9fafb; border-color: #c2c8d0; }
-
-#msg { margin-top: 14px; font-size: 13px; min-height: 18px; }
-.ok  { color: var(--ok); }
-.err { color: var(--err); }
-.note {
-  margin-top: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--muted);
-  line-height: 1.5; background: #f8f9fb; border: 1px solid var(--border); border-radius: 8px;
-}
+#msg { margin-top:14px; font-size:13px; min-height:18px; font-family:var(--mono); color:var(--muted); }
+.ok  { color:var(--ok); }
+.err { color:var(--err); }
+.note { margin-top:12px; padding:12px 14px; font-family:var(--sans); font-size:12.5px; color:var(--muted);
+  line-height:1.5; background:var(--field-bg); border:1px solid var(--divider); border-radius:var(--radius); }
 
 /* ── Název soutěže pod polem ID ──────────────────────────────── */
-#compNameView { margin-top: 6px; font-size: 12.5px; color: var(--muted); min-height: 17px; }
-#compNameView b { color: #344054; font-weight: 600; }
-#compNameView .region { display: block; }
+#compNameView { margin-top:7px; font-size:12.5px; color:var(--muted-2); min-height:17px; }
+#compNameView b { color:var(--ink); font-weight:600; }
+#compNameView .region { display:block; }
 
-/* ── Historie posledních generování (nahoře, dvouřádkové) ─────── */
-#history:empty { display: none; }
-#history:empty + .field { margin-top: 0; }
-#hist-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.hist-item {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 8px 14px; cursor: pointer; text-align: left;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  border: 1px solid rgba(79, 70, 229, .28);
-}
-.hist-item:hover { background: rgba(79, 70, 229, .18); border-color: rgba(79, 70, 229, .45); }
-.hist-name { font-size: 13px; font-weight: 600; color: var(--accent-h); }
-.hist-tpl  { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--accent); }
+/* ── Historie posledních generování (nahoře, dvouřádkové chipy) ─ */
+#history:empty { display:none; }
+#history:empty + .field { margin-top:0; }
+#history { margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--divider); }
+#hist-list { display:flex; flex-wrap:wrap; gap:8px; }
+.hist-item { display:flex; flex-direction:column; gap:2px; padding:8px 12px; text-align:left;
+  background:var(--field-bg); border:1px solid var(--field-bd); }
+.hist-item:hover { background:var(--highlight); border-color:var(--ink); }
+.hist-name { font-family:var(--sans); font-size:13px; font-weight:600; color:var(--ink); }
+.hist-tpl  { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
 
 /* ── Lišta se stažením + náhled dokumentu ────────────────────── */
-#output { margin-top: 32px; }
-#dl-bar { display: flex; gap: 10px; margin-bottom: 16px; }
-#btn-dl  { background: #16a34a; color: #fff; }
-#btn-dl:hover  { background: #15803d; }
-#btn-pdf { background: #fff; color: #344054; border-color: var(--field); }
-#btn-pdf:hover { background: #f9fafb; border-color: #c2c8d0; }
+#output { margin-top:16px; }
+#output:empty { display:none; }
+#dl-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+/* lišta leží na tmavém pozadí (mimo kartu) → invertované barvy */
+#btn-dl  { background:var(--cream); color:var(--ink); border-color:var(--cream);
+  font-size:14px; font-weight:600; height:44px; padding:0 22px; }
+#btn-dl:hover { background:var(--paper); filter:brightness(0.94); }
+#btn-pdf { background:transparent; color:var(--cream); border:1px solid var(--muted-dark);
+  font-size:13px; font-weight:600; height:44px; padding:0 16px; }
+#btn-pdf:hover { border-color:var(--cream); }
 
+/* Náhled je „papír" — barvy odpovídají vygenerovanému DOCX, ne UI. */
 .doc {
-  background: #fff; color: #000; font-family: Arial, sans-serif;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 36px 40px;
+  background:#fff; color:#000; font-family:Arial, sans-serif;
+  border:1px solid var(--ink); border-radius:var(--radius);
+  padding:36px 40px; overflow-x:auto;
 }
-.doc-hdr { text-align: right; font-size: 11px; line-height: 1.25; margin-bottom: 8px; }
-.doc h1 { text-align: center; font-size: 20px; margin: 6px 0 16px; }
-.doc h2 { font-size: 13px; font-weight: bold; margin: 16px 0 6px; }
+.doc-hdr { text-align:right; font-size:11px; line-height:1.25; margin-bottom:8px; }
+.doc h1 { text-align:center; font-size:20px; margin:6px 0 16px; }
+.doc h2 { font-size:13px; font-weight:bold; margin:16px 0 6px; }
 /* šířka podle obsahu (ne 100 %) → buňky se neroztahují */
-.doc table { border-collapse: collapse; width: auto; max-width: 100%; margin-bottom: 6px; font-size: 13px; }
-.doc td, .doc th { border: 1px solid #aaa; padding: 2px 7px; vertical-align: middle; }
-.doc .c { text-align: center; } .doc .r { text-align: right; } .doc .l { text-align: left; }
-.doc tr.mh td { background: #C8D9F0; font-weight: bold; }
-.doc table.stand th { background: #C8D9F0; font-weight: bold; }
-.doc table.stand tbody tr:nth-child(even) td { background: #F2F2F2; }
-.doc table.res td.elo, .doc table.res td.num { white-space: nowrap; }
-.doc p { margin: 4px 0; font-size: 13px; }
+.doc table { border-collapse:collapse; width:auto; max-width:100%; margin-bottom:6px; font-size:13px; }
+.doc td, .doc th { border:1px solid #aaa; padding:2px 7px; vertical-align:middle; }
+.doc .c { text-align:center; } .doc .r { text-align:right; } .doc .l { text-align:left; }
+.doc tr.mh td { background:#C8D9F0; font-weight:bold; }
+.doc table.stand th { background:#C8D9F0; font-weight:bold; }
+.doc table.stand tbody tr:nth-child(even) td { background:#F2F2F2; }
+.doc table.res td.elo, .doc table.res td.num { white-space:nowrap; }
+.doc p { margin:4px 0; font-size:13px; }
+
+@media (max-width:640px) {
+  body { padding:32px 16px 60px; }
+  .row { grid-template-columns:1fr; }
+  .doc { padding:20px 16px; }
+}
 
 /* tisk → uložit jako PDF: schovej formulář, ukaž jen dokument */
 @media print {
-  body * { visibility: hidden; }
-  #output, #output * { visibility: visible; }
-  #output { position: absolute; left: 0; top: 0; width: 100%; margin: 0; }
-  #dl-bar { display: none !important; }
-  .doc { border: none; box-shadow: none; padding: 0; }
+  body { background:#fff; padding:0; }
+  body * { visibility:hidden; }
+  #output, #output * { visibility:visible; }
+  #output { position:absolute; left:0; top:0; width:100%; margin:0; }
+  #dl-bar { display:none !important; }
+  .doc { border:none; padding:0; overflow:visible; }
 }
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<h1 class="page-title">Zpravodaj soutěže</h1>
-<p class="page-sub">Generátor zpravodaje kola ŠSČR do DOCX</p>
+  <div class="app-head">
+    <div class="checker"></div>
+    <h1 class="app-title">Zpravodaj soutěže</h1>
+    <p class="app-sub">Generátor zpravodaje kola soutěže družstev ŠSČR do DOCX — data z api.chess.cz.</p>
+  </div>
 
-<div class="card">
-  <div id="history"></div>
-
-  <div class="field row">
-    <div>
-      <label>ID soutěže</label>
-      <input type="number" id="compId" value="3317">
-      <div id="compNameView"></div>
+  <div class="card">
+    <div class="card-strip">
+      <h2>Zadání</h2>
+      <span class="strip-right">~1 dotaz / s</span>
     </div>
-    <div>
-      <label>Číslo kola</label>
-      <input type="number" id="kolo" value="1">
+    <div class="card-body">
+      <div id="history"></div>
+
+      <div class="field row">
+        <div>
+          <label class="eyebrow" for="compId">ID soutěže</label>
+          <input type="number" id="compId" value="3317">
+          <div id="compNameView"></div>
+        </div>
+        <div>
+          <label class="eyebrow" for="kolo">Číslo kola</label>
+          <input type="number" id="kolo" value="1">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="eyebrow" for="poznamka">Doplňující text — sekce „Různé"</label>
+        <textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
+      </div>
+
+      <div class="field">
+        <label class="eyebrow" for="fname">Název souboru: <span id="fnamePreview" class="fname-preview"></span></label>
+        <input type="text" id="fname" value="[soutez]_[kolo]" spellcheck="false">
+        <span class="hint">Placeholdery: <code>[soutez]</code> = ID soutěže, <code>[kolo]</code> = číslo kola</span>
+      </div>
+
+      <div class="actions">
+        <button id="btn-gen" class="btn-primary" onclick="generate()">Generovat</button>
+        <button id="btn-clear" class="btn-outline" onclick="clearCache()"
+                title="V případě že došlo ke opravě výsledků na stránkách ŠSČR">Vymazat cache</button>
+      </div>
+
+      <div id="msg"></div>
     </div>
   </div>
 
-  <div class="field">
-    <label>Doplňující text <span class="hint" style="display:inline">— sekce „Různé"</span></label>
-    <textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
-  </div>
+  <div id="output"></div>
 
-  <div class="field">
-    <label>Název souboru: <span id="fnamePreview" class="fname-preview"></span></label>
-    <input type="text" id="fname" value="[soutez]_[kolo]">
-    <span class="hint">Placeholdery: <code>[soutez]</code> = ID soutěže, <code>[kolo]</code> = číslo kola</span>
-  </div>
-
-  <div class="actions">
-    <button id="btn-gen" class="btn-primary" onclick="generate()">Generovat</button>
-    <button id="btn-clear" class="btn-secondary" onclick="clearCache()"
-            title="V případě že došlo ke opravě výsledků na stránkách ŠSČR">Vymazat cache</button>
-  </div>
-
-  <div id="msg"></div>
 </div>
-
-<div id="output"></div>
 
 <script>
 /* ================================================================
@@ -218,9 +239,10 @@ const COL_ELO    = 640;
 // COL_NAME se počítá dynamicky podle nejdelšího jména (viz computeNameWidth)
 
 const FS = 20;             // 10 pt (half-points)
-// Min. rozestup mezi voláními API (ms). chess.cz v běžném provozu snese ~1 req/s
-// (stejně jako proxy v projektu pgn-base); ban hrozil jen při burst hamování.
-const API_INTERVAL = 1000;
+// Min. rozestup mezi voláními API (ms). chess.cz agresivně blokuje IP při
+// nárazovém přístupu — držíme ~1 req/s (stejně jako sscr-soupiska).
+const API_INTERVAL = 1100;
+const BLOCK_MS     = 10 * 60 * 1000;   // self-block po 429/síťové chybě (10 min)
 
 // Barvy (jen řetězce)
 const C_HDR    = 'C8D9F0';
@@ -267,33 +289,62 @@ function clearCache() {
   setMsg('Cache vymazána (' + keys.length + ' položek).', 'ok');
 }
 
-/* ── Rate-limitované API (max 1 req / s, viz API_INTERVAL) ──────── */
+/* ── Rate-limitované API ─────────────────────────────────────────
+   Cache hit → okamžitě. Jinak se dotaz zařadí do serializované fronty
+   s rozestupem ≥ API_INTERVAL (ani souběžná volání — např. náhled názvu
+   soutěže během generování — rozestup neobejdou). Po 429/síťové chybě
+   se aplikace sama na BLOCK_MS přestane API ptát. */
+let _chain = Promise.resolve();
 let _apiTs = 0;
-async function apiGet(path, label, quiet, force) {
+let _blockUntil = 0;
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+function apiGet(path, label, quiet, force) {
   label = label || path;
   if (!force) {
     const hit = getCached(path);
-    if (hit !== null) { console.log('[cache hit]', path); return hit; }
+    if (hit !== null) { console.log('[cache hit]', path); return Promise.resolve(hit); }
   }
-  const wait = Math.max(0, _apiTs + API_INTERVAL - Date.now());
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  if (!quiet) setMsg('Načítám: ' + label + '…');
-  _apiTs = Date.now();
-  const r = await fetch(API + path);
-  if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
-  const data = await r.json();
-  // TODO(nová sezóna): až bude jasné, jak vypadá odpověď „kolo ještě nemá
-  // výsledky", přidat sem pro /matches podmínku `if (!isEmpty(data)) setCache(...)`,
-  // ať se prázdné kolo neuloží ani na 10 min. Do té doby to kryje krátký TTL.
-  setCache(path, data);
-  return data;
+  const run = async function() {
+    // mezitím mohl stejný dotaz ve frontě naplnit cache
+    if (!force) { const hit = getCached(path); if (hit !== null) return hit; }
+    if (Date.now() < _blockUntil) {
+      const min = Math.ceil((_blockUntil - Date.now()) / 60000);
+      throw new Error('API je dočasně blokováno (rate-limit) — zkuste to za ' + min + ' min.');
+    }
+    const wait = Math.max(0, _apiTs + API_INTERVAL - Date.now());
+    if (wait > 0) await sleep(wait);
+    if (!quiet) setMsg('Načítám: ' + label + '…');
+    _apiTs = Date.now();
+    let r;
+    try {
+      r = await fetch(API + path);
+    } catch (e) {
+      _blockUntil = Date.now() + BLOCK_MS;
+      throw new Error('Síťová chyba / timeout — API zablokováno na 10 min (' + label + ').');
+    }
+    if (r.status === 429) {
+      _blockUntil = Date.now() + BLOCK_MS;
+      throw new Error('Rate-limit (429) — pauza 10 min.');
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
+    const data = await r.json();
+    // TODO(nová sezóna): až bude jasné, jak vypadá odpověď „kolo ještě nemá
+    // výsledky", přidat sem pro /matches podmínku `if (!isEmpty(data)) setCache(...)`,
+    // ať se prázdné kolo neuloží ani na 10 min. Do té doby to kryje krátký TTL.
+    setCache(path, data);
+    return data;
+  };
+  const p = _chain.then(run, run);
+  _chain = p.then(function() {}, function() {});
+  return p;
 }
 
 /* ── Pomocné funkce ─────────────────────────────────────────────── */
 function setMsg(html, cls) {
   document.getElementById('msg').innerHTML =
     cls ? '<span class="' + cls + '">' + html + '</span>'
-        : '<span style="color:#555">' + html + '</span>';
+        : '<span>' + html + '</span>';
 }
 function norm(d) { return Array.isArray(d) ? d : (d ? [d] : []); }
 
@@ -580,6 +631,8 @@ async function generate() {
 
   if (!compId || !kolo) { setMsg('Vyplňte compId a číslo kola.', 'err'); return; }
 
+  const btn = document.getElementById('btn-gen');
+  btn.disabled = true;   // dvojklik by frontu zbytečně zdvojil
   try {
     const details   = await apiGet('/competitions/' + compId + '/details', 'detaily soutěže');
     // Pořadí se přepočítává současně s výsledky kola. Když se výsledky načetly
@@ -697,6 +750,8 @@ async function generate() {
   } catch (e) {
     setMsg('Chyba: ' + e.message, 'err');
     console.error(e);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -797,7 +852,7 @@ async function lookupCompName() {
     maybeSuggestFname(d);
   } catch (e) {
     if (document.getElementById('compId').value.trim() === compId)
-      view.innerHTML = '<span class="err">soutěž nenalezena</span>';
+      view.innerHTML = '<span class="err">' + (Date.now() < _blockUntil ? esc(e.message) : 'soutěž nenalezena') + '</span>';
     _lookupId = null;   // ať to po opravě zkusí znovu
   }
 }

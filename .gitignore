@@ -10,3 +10,6 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# Cloudflare wrangler
+.wrangler/

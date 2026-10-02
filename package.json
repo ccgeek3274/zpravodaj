@@ -4,6 +4,8 @@
   "description": "Generátor zpravodaje kola soutěže družstev ŠSČR (jednosouborová webová aplikace).",
   "private": true,
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
   }
 }

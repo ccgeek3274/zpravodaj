@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 
 // První <script> bez atributů je ten inline (CDN docx má <script src=…>).
 const m = html.match(/<script>([\s\S]*?)<\/script>/);
@@ -79,4 +79,44 @@ test('computeNameWidth — meze a monotónie', () => {
   const maxAllowed = computeNameWidth([{ homeTeamName: 'X'.repeat(200),
     awayTeamName: 'Y', matchGames: [{ homePlayerName: 'Z'.repeat(200), awayPlayerName: '' }] }]);
   assert.ok(maxAllowed < 9026, `šířka přesáhla obsah stránky: ${maxAllowed}`);
+});
+
+// ── apiGet: serializovaná fronta + self-block po 429 ──────────────
+// Vlastní vm-kontext s mockem fetch a localStorage (in-memory).
+function apiCtx(fetchImpl) {
+  const store = new Map();
+  const c = {
+    window: { addEventListener() {} }, console: { log() {}, error() {} },
+    setTimeout, Promise, btoa, unescape, encodeURIComponent,
+    localStorage: {
+      getItem: k => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: k => store.delete(k),
+    },
+    fetch: fetchImpl,
+  };
+  vm.createContext(c);
+  vm.runInContext(m[1], c);
+  return c;
+}
+const okJson = d => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
+
+test('apiGet — souběžná volání jdou s rozestupem ≥ 1,1 s, cache hit bez sítě', async () => {
+  const times = [];
+  const c = apiCtx(url => { times.push(Date.now()); return okJson({ url }); });
+  const [a, b] = await Promise.all([c.apiGet('/a', null, true), c.apiGet('/b', null, true)]);
+  assert.match(a.url, /api\.chess\.cz\/api\/a$/);
+  assert.match(b.url, /\/api\/b$/);
+  assert.equal(times.length, 2);
+  assert.ok(times[1] - times[0] >= 1095, 'rozestup ' + (times[1] - times[0]) + ' ms');
+  await c.apiGet('/a', null, true);           // z cache
+  assert.equal(times.length, 2);
+});
+
+test('apiGet — po 429 se další dotazy odmítnou bez volání fetch', async () => {
+  let calls = 0;
+  const c = apiCtx(() => { calls++; return Promise.resolve({ ok: false, status: 429 }); });
+  await assert.rejects(c.apiGet('/x', null, true), /429/);
+  await assert.rejects(c.apiGet('/y', null, true), /blokováno/);
+  assert.equal(calls, 1);
 });
