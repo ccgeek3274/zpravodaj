@@ -24,7 +24,7 @@ const ctx = { window: { addEventListener() {} }, console };
 vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
-const { fmtHalf, abbrev, resolveFname, computeNameWidth, ttlFor,
+const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
         matchCols, standingsCols, refLine, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 
@@ -159,4 +159,11 @@ test('parseCompetitions + findRegionOf — řazení a dohledání kraje podle ID
   assert.deepEqual(plain(regs[0].competitions.map(c => c.compId)), [1, 2]); // podle úrovně
   assert.equal(findRegionOf(regs, '9').key, '98');                         // single → pole
   assert.equal(findRegionOf(regs, 777), null);
+});
+
+test('seasonYears / suggestFname — sezóna soutěže, ne dnešní datum', () => {
+  assert.equal(seasonYears(2025), '25_26');
+  assert.equal(seasonYears('2009'), '09_10');
+  assert.match(seasonYears(), /^\d\d_\d\d$/);            // fallback podle data
+  assert.equal(suggestFname("Regionální soutěž 'D'", 2025), 'rsd_25_26_[kolo]');
 });

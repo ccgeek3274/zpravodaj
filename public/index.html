@@ -155,7 +155,8 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 .doc .d-h.first { margin-top:4px; }
 .doc .d-p { margin:0 0 6.67px; }
 .doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.15; }
-.doc table.res { margin-bottom:8px; }
+.doc table.res { margin-bottom:16.87px; }   /* = prázdný řádek 11 pt (gap() v DOCX) */
+.doc table.res:last-of-type { margin-bottom:0; }
 .doc td, .doc th { border:1px solid #AAA; padding:1.6px 6px; vertical-align:middle;
   overflow:hidden; white-space:nowrap; font-weight:normal; }
 .doc .c { text-align:center; } .doc .r { text-align:right; } .doc .l { text-align:left; }
@@ -646,8 +647,9 @@ function para(text, opts) {
     })]
   });
 }
+/* Mezera mezi tabulkami zápasů: jeden standardní prázdný řádek (11 pt, jednoduché řádkování). */
 function gap() {
-  return new docx.Paragraph({ spacing: { before: 0, after: 0, line: 120, lineRule: 'auto' }, children: [] });
+  return new docx.Paragraph({ spacing: { before: 0, after: 0, line: 240, lineRule: 'auto' }, children: [] });
 }
 
 /* ── Stav vygenerovaného zpravodaje ─────────────────────────────
@@ -911,10 +913,10 @@ function nameLine(d, compId) {
 
 /* Sezóna podle dnešního data – nová začíná v září (měsíc 9).
    Vrací poslední dvojčíslí obou let, např. "25_26". */
-function seasonYears() {
-  const d = new Date();
-  let start = d.getFullYear();
-  if (d.getMonth() < 8) start -= 1;   // led–srp ⇒ sezóna začala loni
+/* Sezóna jako „25_26“. startYear = rok zahájení sezóny soutěže;
+   bez něj (soutěž nenalezena) podle dnešního data — nová sezóna od září. */
+function seasonYears(startYear) {
+  const start = startYear != null ? +startYear : currentSeasonStart();
   const yy = function(n) { return ('0' + (n % 100)).slice(-2); };
   return yy(start) + '_' + yy(start + 1);
 }
@@ -931,8 +933,8 @@ function abbrev(compName) {
 }
 
 /* Navržená šablona názvu, např. "ksa_25_26_[kolo]". */
-function suggestFname(compName) {
-  return abbrev(compName) + '_' + seasonYears() + '_[kolo]';
+function suggestFname(compName, startYear) {
+  return abbrev(compName) + '_' + seasonYears(startYear) + '_[kolo]';
 }
 
 /* Dosadí placeholdery a doplní příponu → výsledný název souboru.
@@ -956,9 +958,9 @@ function updateFnamePreview() {
 }
 
 /* Doplní navržený název, jen pokud ho uživatel ručně neměnil. */
-function maybeSuggestFname(d) {
+function maybeSuggestFname(d, startYear) {
   if (!_fnameAuto) return;
-  document.getElementById('fname').value = suggestFname(d.compName || '');
+  document.getElementById('fname').value = suggestFname(d.compName || '', startYear);
   updateFnamePreview();
 }
 
@@ -966,6 +968,33 @@ function maybeSuggestFname(d) {
    ať ho nový návrh může přepsat. */
 function isLegacyTpl(t) {
   return !t || t.trim() === '' || t.trim() === '[soutez]_[kolo]';
+}
+
+/* Sezóna soutěže (rok zahájení). /details ji neobsahuje → hledá se v seznamech
+   soutěží: nejdřív v právě načtené sezóně, pak v ostatních nabízených (cache).
+   null = nenalezeno (název souboru pak podle dnešního data). */
+async function findCompSeason(compId) {
+  const loaded = cSeason ? cSeason.value : '';
+  if (loaded && findRegionOf(_regions, compId)) return +loaded;
+  for (const it of seasonItems()) {
+    if (it.value === loaded) continue;
+    try {
+      const regs = parseCompetitions(await apiGet('/competitions/' + it.value, 'soutěže ' + it.value, true));
+      if (findRegionOf(regs, compId)) return +it.value;
+    } catch (e) { return null; }
+  }
+  return null;
+}
+
+/* Po načtení detailů: přepni menu na sezónu soutěže a navrhni název souboru. */
+async function applySeason(d, compId) {
+  const yr = await findCompSeason(compId);
+  if (document.getElementById('compId').value.trim() !== compId) return;   // ID se mezitím změnilo
+  if (yr != null && cSeason && cSeason.value !== String(yr)) {
+    cSeason.set(String(yr));
+    await loadCompetitions();
+  }
+  maybeSuggestFname(d, yr);
 }
 
 async function lookupCompName() {
@@ -977,14 +1006,14 @@ async function lookupCompName() {
 
   const path = '/competitions/' + compId + '/details';
   const cached = getCached(path);
-  if (cached) { view.innerHTML = nameLine(cached, compId); maybeSuggestFname(cached); return; }
+  if (cached) { view.innerHTML = nameLine(cached, compId); await applySeason(cached, compId); return; }
 
   view.textContent = 'načítám název…';
   try {
     const d = await apiGet(path, null, true);   // tichý dotaz
     if (document.getElementById('compId').value.trim() !== compId) return; // ID se mezitím změnilo
     view.innerHTML = nameLine(d, compId);
-    maybeSuggestFname(d);
+    await applySeason(d, compId);
   } catch (e) {
     if (document.getElementById('compId').value.trim() === compId)
       view.innerHTML = '<span class="err">' + (Date.now() < _blockUntil ? esc(e.message) : 'soutěž nenalezena') + '</span>';
@@ -1109,16 +1138,20 @@ function createCombo(id, cfg) {
 let cSeason, cKraj, cSoutez;   // vytváří se v init (testy běží bez DOM)
 let _regions = [];
 
+let _loadSeq = 0;   // souběžná načtení sezón: platí poslední
 async function loadCompetitions() {
-  const year = cSeason.value;
+  const year = cSeason.value, seq = ++_loadSeq;
   cKraj.disable('načítám…');
   cSoutez.disable('— nejprve vyberte kraj —');
   try {
-    _regions = parseCompetitions(await apiGet('/competitions/' + year, 'soutěže ' + year, true));
+    const regs = parseCompetitions(await apiGet('/competitions/' + year, 'soutěže ' + year, true));
+    if (seq !== _loadSeq) return;
+    _regions = regs;
     cKraj.setItems(_regions.map(function(r) { return { value: r.key, label: r.regionName }; }),
       'Začněte psát kraj…');
     syncCombosFromId();
   } catch (e) {
+    if (seq !== _loadSeq) return;
     cKraj.disable('nepodařilo se načíst');
     setMsg('Soutěže ' + year + ': ' + esc(e.message), 'err');
   }
