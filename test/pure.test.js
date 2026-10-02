@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
-        matchCols, standingsCols, refLine, richBlocks, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, refLine, richBlocks, headerText, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
@@ -203,4 +203,20 @@ test('richBlocks — odrážky, prázdný řádek, <br>, mezery mezi bloky, konc
     el('DIV', null, el('DIV', null, txt('vnořený'))),
     el('DIV', null, el('BR', null)));
   assert.deepEqual(simple(richBlocks(r)), ['úvod', '• jedna', '• *dvě', '', 'x', 'y', 'vnořený']);
+});
+
+test('headerText — „Kraj - Soutěž - Ročník“, chybějící části se vynechají', () => {
+  assert.equal(headerText({ regionName: 'Středočeský šachový svaz (SŠS)', compName: "Regionální soutěž 'D'", season: 2025 }),
+               "Středočeský šachový svaz (SŠS) - Regionální soutěž 'D' - 2025/2026");
+  assert.equal(headerText({ regionName: '', compName: 'Extraliga', season: null }), 'Extraliga');
+});
+
+test('sizeAtNode — <font size>, CSS font-size, základ 11 pt', () => {
+  const t1 = txt('a'), t2 = txt('b'), t3 = txt('c');
+  const ed = root(el('FONT', { size: 5 }, el('B', null, t1)), el('SPAN', { style: { fontSize: '12pt' } }, t2), t3);
+  const fix = n => { n.childNodes.forEach(k => { k.parentNode = n; if (k.childNodes) fix(k); }); };
+  fix(ed);
+  assert.equal(sizeAtNode(t1, ed), 14);
+  assert.equal(sizeAtNode(t2, ed), 12);
+  assert.equal(sizeAtNode(t3, ed), 11);
 });

@@ -17,7 +17,8 @@ Práce má tři kroky:
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem
    (řádek „Rozhodčí: …“ přes celou šířku tabulky) a celou sekci *Různé*
    včetně jména vedoucího a data. Různé má lištu: **tučně**, *kurzíva*,
-   podtržení, odrážky, velikost písma (9–16 pt) a ↺ návrat k výchozímu textu.
+   podtržení, odrážky, velikost písma (tlačítka 9–16 pt; zvýrazněná = velikost
+   u kurzoru) a ↺ návrat k výchozímu textu.
    Ze schránky se vkládá jen prostý text.
    Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
@@ -39,6 +40,8 @@ Práce má tři kroky:
   hráče i názvu týmu (měřeno přes canvas), aby se nic nezalomilo.
 - Tabulky se nedělí mezi stránky (`cantSplit` + `keepNext`).
 - Jméno vedoucího se bere z API (`compManagerName`).
+- Záhlaví stránky na jednom řádku (9 pt): *Kraj - Soutěž - Ročník*; ročník se
+  dohledá v seznamu soutěží (endpoint `details` ho nevrací).
 
 ## Nasazení (Cloudflare Workers — static assets)
 

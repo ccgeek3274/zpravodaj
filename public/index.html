@@ -149,7 +149,9 @@ input:disabled { opacity:.6; cursor:not-allowed; }
   font-family:Arial, Helvetica, sans-serif; font-size:14.67px; line-height:1.15;
   padding:26px 96px 96px; border:1px solid var(--divider);
 }
-.doc-hdr { text-align:right; font-size:10.67px; line-height:1.05; margin-bottom:6px; min-height:27px; }
+/* záhlaví 9 pt na jednom řádku; 0,7 cm od kraje, sazba od 1,4 cm */
+.doc-hdr { text-align:right; font-size:12px; line-height:1.15; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; min-height:14px; margin-bottom:13px; }
 .doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; }
 .doc .d-h { font-size:13.33px; font-weight:bold; margin:13.33px 0 5.33px; }
 .doc .d-h.first { margin-top:4px; }
@@ -179,9 +181,11 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 /* Lišta editoru — UI prvek uvnitř „papíru“, v tisku skrytá */
 .rich-bar { display:flex; gap:4px; align-items:center; flex-wrap:wrap; margin:0 0 6px;
   font-family:var(--mono); }
-.rich-bar button, .rich-bar select { height:28px; min-width:30px; padding:0 8px; font-size:13px;
+.rich-bar button { height:28px; min-width:30px; padding:0 8px; font-size:13px;
   background:var(--field-bg); color:var(--ink); border:1px solid var(--field-bd); border-radius:var(--radius); }
-.rich-bar select { width:auto; font-family:var(--mono); cursor:pointer; }
+.rich-bar [data-size] { min-width:28px; padding:0 6px; font-size:12px; }
+.rich-sep { width:1px; height:20px; background:var(--divider); margin:0 4px; }
+.rich-lbl { font-size:11px; color:var(--muted); letter-spacing:0.04em; margin-right:2px; }
 .rich-bar button:hover { background:var(--highlight); }
 .rich-bar button.on { background:var(--ink); color:var(--cream); border-color:var(--ink); }
 .rich-bar #richReset { margin-left:auto; }
@@ -532,6 +536,12 @@ function standingsCols() {
 }
 function sum(arr) { return arr.reduce(function(a, b) { return a + b; }, 0); }
 
+/* Záhlaví stránky: „Kraj - Soutěž - Ročník“ (ročník jen když je sezóna známá). */
+function headerText(d) {
+  const season = d.season != null ? d.season + '/' + (+d.season + 1) : '';
+  return [d.regionName, d.compName, season].filter(Boolean).join(' - ');
+}
+
 /* Text řádku s rozhodčím pod zápasem. */
 const REF_LABEL = 'Rozhodčí: ';
 function refLine(name) { return REF_LABEL + String(name || '').trim(); }
@@ -706,6 +716,23 @@ function standingsVals(t, idx) {
 const RICH_BASE_PT = 11;
 // <font size="N"> (execCommand fontSize) → pt
 const FONT_SIZE_PT = { 1: 8, 2: 9, 3: 11, 4: 12, 5: 14, 6: 16, 7: 18 };
+const RICH_SIZES = [2, 3, 4, 5, 6];   // nabízené velikosti (9–16 pt), 3 = základních 11 pt
+
+/* Velikost písma (pt) v místě uzlu: nejbližší <font size> / CSS font-size
+   směrem k editoru, jinak základní velikost. */
+function sizeAtNode(node, root) {
+  let el = node && node.nodeType === 3 ? node.parentNode : node;
+  while (el && el !== root) {
+    if (el.nodeName === 'FONT' && el.getAttribute('size')) {
+      const v = FONT_SIZE_PT[el.getAttribute('size')];
+      if (v) return v;
+    }
+    const css = el.style && cssSizePt(el.style.fontSize);
+    if (css) return css;
+    el = el.parentNode;
+  }
+  return RICH_BASE_PT;
+}
 
 function defaultRozne(d) {
   let h = '<div>' + esc(DEFAULT_POZNAMKA) + '</div>';
@@ -824,8 +851,7 @@ function richPdf(blocks) {
 function previewHtml(d, withRef, rozne) {
   let h = '<div class="doc">';
 
-  const hdr = [d.regionName, d.compName].filter(Boolean).map(esc).join('<br>');
-  h += '<div class="doc-hdr">' + hdr + '</div>';
+  h += '<div class="doc-hdr">' + esc(headerText(d)) + '</div>';
   h += '<div class="d-title">' + esc('Zpravodaj z kola č. ' + d.kolo) + '</div>';
 
   // 1. Výsledky — každý zápas vlastní tabulka, všechny stejně široké
@@ -879,11 +905,11 @@ function previewHtml(d, withRef, rozne) {
      + '<button type="button" data-cmd="italic" title="Kurzíva (Ctrl/⌘+I)"><i>I</i></button>'
      + '<button type="button" data-cmd="underline" title="Podtržení (Ctrl/⌘+U)"><u>U</u></button>'
      + '<button type="button" data-cmd="insertUnorderedList" title="Odrážky">• —</button>'
-     + '<select id="richSize" title="Velikost písma">'
-     + [2, 3, 4, 5, 6].map(function(n) {
-         return '<option value="' + n + '"' + (n === 3 ? ' selected' : '') + '>' + FONT_SIZE_PT[n] + ' pt</option>';
+     + '<span class="rich-sep"></span><span class="rich-lbl">pt</span>'
+     + RICH_SIZES.map(function(n) {
+         return '<button type="button" data-size="' + n + '" title="Velikost písma ' + FONT_SIZE_PT[n] + ' pt">'
+              + FONT_SIZE_PT[n] + '</button>';
        }).join('')
-     + '</select>'
      + '<button type="button" id="richReset" title="Vrátit výchozí text">↺</button>'
      + '</div>';
   // rozne je HTML z vlastního editoru (vkládání ze schránky jen jako prostý text)
@@ -915,26 +941,43 @@ function renderPreview() {
    tlačítka nekradou fokus, stav B/I/U/odrážek se zvýrazňuje podle kurzoru. */
 function wireRichEditor() {
   const ed = document.getElementById('pozn'), bar = document.getElementById('richBar');
-  const size = document.getElementById('richSize');
   try { document.execCommand('defaultParagraphSeparator', false, 'div'); } catch (e) {}
   function save() { _rozne = ed.innerHTML; }
+  function inEditor() { const sel = document.getSelection(); return sel && ed.contains(sel.anchorNode); }
+  function markSize(pt) {
+    [].forEach.call(bar.querySelectorAll('[data-size]'), function(b) {
+      b.classList.toggle('on', pt != null && FONT_SIZE_PT[b.dataset.size] === pt);
+    });
+  }
+  // Zvýraznění B/I/U/odrážek a velikosti podle místa kurzoru
   function refresh() {
+    const inside = inEditor();
     [].forEach.call(bar.querySelectorAll('[data-cmd]'), function(b) {
       let on = false;
       try { on = document.queryCommandState(b.dataset.cmd); } catch (e) {}
-      b.classList.toggle('on', on && ed.contains(document.getSelection().anchorNode));
+      b.classList.toggle('on', on && inside);
     });
+    markSize(inside ? sizeAtNode(document.getSelection().anchorNode, ed) : null);
   }
   [].forEach.call(bar.querySelectorAll('button'), function(b) {
     b.addEventListener('mousedown', function(e) { e.preventDefault(); });   // ponech výběr v editoru
   });
   [].forEach.call(bar.querySelectorAll('[data-cmd]'), function(b) {
     b.addEventListener('click', function() {
-      ed.focus(); document.execCommand(b.dataset.cmd, false, null); save(); refresh();
+      if (!inEditor()) ed.focus();
+      document.execCommand(b.dataset.cmd, false, null); save(); refresh();
     });
   });
-  size.addEventListener('change', function() {
-    ed.focus(); document.execCommand('fontSize', false, size.value); save();
+  // Velikost: tlačítka (ne <select>) — nekradou fokus ani výběr a každé kliknutí
+  // se provede, i když je velikost už zvýrazněná. Bez výběru platí pro další psaní.
+  [].forEach.call(bar.querySelectorAll('[data-size]'), function(b) {
+    b.addEventListener('click', function() {
+      if (!inEditor()) ed.focus();
+      try { document.execCommand('styleWithCSS', false, false); } catch (e) {}   // <font size>, ne inline CSS
+      document.execCommand('fontSize', false, b.dataset.size);
+      save();
+      markSize(FONT_SIZE_PT[b.dataset.size]);
+    });
   });
   document.getElementById('richReset').addEventListener('click', function() {
     if (!confirm('Vrátit sekci Různé na výchozí text? Úpravy se ztratí.')) return;
@@ -971,17 +1014,12 @@ function buildDocx(d, withRef, blocks) {
   richDocx(blocks).forEach(function(p) { children.push(p); });
 
   /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
-  const headerLines = [];
-  if (d.regionName) headerLines.push(d.regionName);
-  headerLines.push(d.compName);
   const pageHeader = new docx.Header({
-    children: headerLines.map(function(line) {
-      return new docx.Paragraph({
-        alignment: 'right',
-        spacing: { before: 0, after: 0, line: 200, lineRule: 'auto' },
-        children: [new docx.TextRun({ text: line, size: 16, font: 'Arial' })]
-      });
-    })
+    children: [new docx.Paragraph({
+      alignment: 'right',
+      spacing: { before: 0, after: 0 },
+      children: [new docx.TextRun({ text: headerText(d), size: 18, font: 'Arial' })]   // 9 pt
+    })]
   });
 
   /* header 0,7 cm od okraje; horní okraj zmenšen na 1,4 cm (méně místa nahoře) */
@@ -1124,12 +1162,12 @@ function buildPdfDef(d, withRef, blocks) {
   content.push({ text: '3. Různé a ostatní', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
   richPdf(blocks).forEach(function(n) { content.push(n); });
 
-  const hdrLines = [d.regionName, d.compName].filter(Boolean).join('\n');
+
   return {
     pageSize: 'A4',
     // okraje jako DOCX: horní 1,4 cm, ostatní 1 in; záhlaví 0,7 cm od kraje
     pageMargins: [pt(MARGIN), pt(Math.round(1.4 * CM)), pt(MARGIN), pt(MARGIN)],
-    header: { text: hdrLines, alignment: 'right', fontSize: 8, lineHeight: 0.95,
+    header: { text: headerText(d), alignment: 'right', fontSize: 9,
               margin: [pt(MARGIN), pt(Math.round(0.7 * CM)), pt(MARGIN), 0] },
     defaultStyle: { font: 'Roboto', fontSize: 11 },
     info: { title: 'Zpravodaj z kola č. ' + d.kolo + ' — ' + d.compName },
@@ -1177,12 +1215,14 @@ async function generate() {
     const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí', false, !matchesFromCache);
 
     const matchList = norm(matches);
+    let season = null;
+    try { season = await findCompSeason(compId); } catch (e) {}   // ročník do záhlaví (z cache)
     // Stejná soutěž a kolo → doplněná jména rozhodčích zůstanou
     const keepRefs = _doc && _doc.compId === compId && _doc.kolo === kolo
                      && _doc.matchList.length === matchList.length;
 
     _doc = {
-      compId: compId, kolo: kolo,
+      compId: compId, kolo: kolo, season: season,
       compName:   details.compName   || ('Soutěž ' + compId),
       regionName: details.regionName || '',
       jmeno:      vedouciName(details.compManagerName),
