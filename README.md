@@ -18,7 +18,10 @@ Práce má tři kroky:
    (řádek „Rozhodčí: …“ přes celou šířku tabulky) a text sekce *Různé*.
    Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
-   DOCX** (sestaví se až teď, se všemi úpravami) nebo **Uložit jako PDF** (tisk).
+   DOCX** nebo **Stáhnout PDF**. Obojí se sestaví až teď, se všemi úpravami.
+   PDF generuje přímo prohlížeč (pdfmake, písmo Roboto) ze stejných dat
+   a rozměrů jako DOCX — žádný tiskový dialog ani převod. Knihovna (~1,9 MB)
+   se načítá na pozadí až po vygenerování náhledu.
 
 ## Vlastnosti
 

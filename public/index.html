@@ -283,13 +283,12 @@ input:disabled { opacity:.6; cursor:not-allowed; }
       </div>
       <div class="actions">
         <button id="btn-dl" class="btn-primary" onclick="downloadDocx()">⬇ Stáhnout DOCX</button>
-        <button id="btn-pdf" class="btn-outline" onclick="window.print()">Uložit jako PDF (tisk)</button>
+        <button id="btn-pdf" class="btn-primary" onclick="downloadPdf()">⬇ Stáhnout PDF</button>
       </div>
       <div id="dlMsg" class="msg2"></div>
       <div class="note">
-        • DOCX se sestaví až při stažení — obsahuje vše, co jste v náhledu doplnili.<br>
-        • Náhled odpovídá DOCX rozměry tabulek; zalomení stránek a tisk z prohlížeče se mohou lišit.
-          Nejlepšího PDF dosáhnete exportem staženého DOCX z Office.<br>
+        • DOCX i PDF se sestaví až při stažení — obsahují vše, co jste v náhledu doplnili.<br>
+        • PDF drží formu DOCX (rozměry tabulek, okraje, záhlaví), jen jiným písmem (Roboto místo Arialu).<br>
         • Tabulka pořadí odpovídá <b>datu generování</b> zpravodaje — pořadí k předchozím kolům nelze vygenerovat.
       </div>
     </div>
@@ -841,6 +840,140 @@ async function downloadDocx() {
   }
 }
 
+/* ── PDF přes pdfmake (Roboto) ───────────────────────────────────
+   Sestavuje se ze stejného stavu a stejných rozměrů jako DOCX
+   (DXA / 20 = pt). Knihovna má i s fontem ~1,9 MB, proto se načítá
+   až na pozadí po vygenerování náhledu, ne při otevření stránky. */
+const PDFMAKE_SRC = [
+  { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.3.3/pdfmake.min.js',
+    sri: 'sha512-EkS5jkn3vXRWIdphIy51xskMZggNip3Or8kpe/FlM5XaQeiK2GZJ9OwrIEbXl6txKWsHNtm4OXtxzkkz41Mspw==' },
+  { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.3.3/fonts/Roboto.min.js',
+    sri: 'sha512-bOva+XtvREfGZHN76jdWd0EvHsfTl7KKKrywZA4UTHYBeYdhJO8rhxZaBpof+ukGhgvWCmdIkKMS3pZyqrFSIw==' },
+];
+let _pdfReady = null;
+function loadScript(it) {
+  return new Promise(function(resolve, reject) {
+    const el = document.createElement('script');
+    el.src = it.src; el.integrity = it.sri; el.crossOrigin = 'anonymous';
+    el.onload = resolve;
+    el.onerror = function() { el.remove(); reject(new Error('nepodařilo se načíst knihovnu PDF')); };
+    document.head.appendChild(el);
+  });
+}
+function loadPdfMake() {
+  if (!_pdfReady) {
+    _pdfReady = PDFMAKE_SRC.reduce(function(p, it) { return p.then(function() { return loadScript(it); }); },
+                                   Promise.resolve())
+      .catch(function(e) { _pdfReady = null; throw e; });   // při chybě zkusit znovu příště
+  }
+  return _pdfReady;
+}
+
+function pt(dxa) { return dxa / 20; }
+const PDF_PAD = 3;            // vodorovný okraj buňky (DOCX má 4,5 pt; Roboto je širší než Arial)
+const PDF_LINE = 0.5;
+/* Šířky sloupců pro pdfmake: zadávají se BEZ paddingu a čar → odečíst,
+   ať celková šířka tabulky sedí s DOCX. */
+function pdfWidths(ws) {
+  return ws.map(function(w) { return Math.max(4, pt(w) - 2 * PDF_PAD - PDF_LINE); });
+}
+const PDF_TABLE_LAYOUT = {
+  hLineWidth: function() { return PDF_LINE; }, vLineWidth: function() { return PDF_LINE; },
+  hLineColor: function() { return '#AAAAAA'; }, vLineColor: function() { return '#AAAAAA'; },
+  paddingLeft: function() { return PDF_PAD; }, paddingRight: function() { return PDF_PAD; },
+  paddingTop: function() { return 1.2; }, paddingBottom: function() { return 1.2; },
+};
+
+function buildPdfDef(d, withRef, poznamka) {
+  const HDR = '#' + C_HDR, ALT = '#' + C_ALT;
+  const content = [
+    { text: 'Zpravodaj z kola č. ' + d.kolo, bold: true, fontSize: 16, alignment: 'center', margin: [0, 0, 0, pt(160)] },
+    { text: '1. Výsledky', bold: true, fontSize: 10, margin: [0, pt(60), 0, pt(80)] },
+  ];
+
+  const mw = pdfWidths(matchCols(d.nameW));
+  d.matchList.forEach(function(m, mi) {
+    const h = { bold: true, fillColor: HDR };
+    const body = [[
+      Object.assign({ text: d.kolo + '.' + (mi + 1), alignment: 'center', noWrap: true }, h),
+      Object.assign({ text: m.homeTeamName || '', colSpan: 2 }, h), {},
+      Object.assign({ text: fmtScore(m.homeTeamScore, m.awayTeamScore), alignment: 'center' }, h),
+      Object.assign({ text: m.awayTeamName || '', colSpan: 2, alignment: 'right' }, h), {},
+    ]];
+    norm(m.matchGames).forEach(function(g, idx) {
+      body.push([
+        { text: String(idx + 1), alignment: 'center' },
+        { text: g.homePlayerName || '' },
+        { text: eloStr(g.homePlayerRating), alignment: 'right' },
+        { text: fmtResult(g.homePlayerResult, g.awayPlayerResult), alignment: 'center' },
+        { text: eloStr(g.awayPlayerRating) },
+        { text: g.awayPlayerName || '' },
+      ]);
+    });
+    if (withRef) body.push([{ text: refLine(d.refs[mi]), colSpan: 6 }, {}, {}, {}, {}, {}]);
+    content.push({
+      table: { widths: mw, body: body, dontBreakRows: true },
+      layout: PDF_TABLE_LAYOUT, fontSize: 10,
+      unbreakable: true,                          // zápas se nedělí mezi stránky
+      // mezi zápasy jeden prázdný řádek 11 pt (jako gap() v DOCX)
+      margin: [0, 0, 0, mi < d.matchList.length - 1 ? 12.65 : 0],
+    });
+  });
+
+  content.push({ text: '2. Pořadí družstev', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
+  const sc = standingsCols();
+  const aligns = ['center', 'left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'];
+  const sBody = [['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'].map(function(x, i) {
+    return { text: x, bold: true, fillColor: HDR, alignment: aligns[i] };
+  })];
+  d.teamList.forEach(function(t, idx) {
+    sBody.push(standingsVals(t, idx).map(function(v, i) {
+      return { text: String(v), alignment: aligns[i], fillColor: idx % 2 === 1 ? ALT : null };
+    }));
+  });
+  content.push({ table: { widths: pdfWidths(sc), body: sBody, headerRows: 1, dontBreakRows: true },
+                 layout: PDF_TABLE_LAYOUT, fontSize: 10, unbreakable: true });
+
+  content.push({ text: '3. Různé a ostatní', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
+  String(poznamka || '').trim().split('\n').forEach(function(line) {
+    if (line.trim()) content.push({ text: line, margin: [0, 0, 0, pt(100)] });
+  });
+  if (d.jmeno) content.push({ text: d.jmeno, bold: true, margin: [0, pt(80), 0, pt(100)] });
+  content.push({ text: d.dateStr });
+
+  const hdrLines = [d.regionName, d.compName].filter(Boolean).join('\n');
+  return {
+    pageSize: 'A4',
+    // okraje jako DOCX: horní 1,4 cm, ostatní 1 in; záhlaví 0,7 cm od kraje
+    pageMargins: [pt(MARGIN), pt(Math.round(1.4 * CM)), pt(MARGIN), pt(MARGIN)],
+    header: { text: hdrLines, alignment: 'right', fontSize: 8, lineHeight: 0.95,
+              margin: [pt(MARGIN), pt(Math.round(0.7 * CM)), pt(MARGIN), 0] },
+    defaultStyle: { font: 'Roboto', fontSize: 11 },
+    info: { title: 'Zpravodaj z kola č. ' + d.kolo + ' — ' + d.compName },
+    content: content,
+  };
+}
+
+async function downloadPdf() {
+  if (!_doc) return;
+  const btn = document.getElementById('btn-pdf');
+  btn.disabled = true;
+  try {
+    setMsg('Připravuji PDF…', null, 'dlMsg');
+    await loadPdfMake();
+    const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
+    const fname = resolveFname(tpl, _doc.compId, _doc.kolo, 'pdf');
+    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, _poznamka)).download(fname);
+    saveHistoryEntry({ compId: _doc.compId, compName: _doc.compName, fname: tpl, ts: Date.now() });
+    setMsg('✓ Staženo: ' + esc(fname), 'ok', 'dlMsg');
+  } catch (e) {
+    setMsg('Chyba PDF: ' + esc(e.message), 'err', 'dlMsg');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ── Generování: načtení dat + náhled ───────────────────────────── */
 async function generate() {
   const compId   = document.getElementById('compId').value.trim();
@@ -883,6 +1016,7 @@ async function generate() {
     setMsg('', null, 'dlMsg');
     updateFnamePreview();
     setMsg('✓ Hotovo — v náhledu doplňte rozhodčí a sekci Různé, stažení je na konci.', 'ok');
+    loadPdfMake().catch(function() {});   // na pozadí, ať je „Stáhnout PDF“ hned
     document.getElementById('sec-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     setMsg('Chyba: ' + esc(e.message), 'err');
@@ -939,14 +1073,14 @@ function suggestFname(compName, startYear) {
 
 /* Dosadí placeholdery a doplní příponu → výsledný název souboru.
    Kolo v názvu vždy dvouciferné (1 → 01). */
-function resolveFname(tpl, compId, kolo) {
+function resolveFname(tpl, compId, kolo, ext) {
+  ext = ext || 'docx';
   const k = /^\d+$/.test(kolo) ? kolo.padStart(2, '0') : kolo;
   let f = (tpl || '[soutez]_[kolo]')
             .replace(/\[soutez\]/gi, compId)
             .replace(/\[kolo\]/gi, k)
             .replace(/[\\/:*?"<>|]+/g, '_');   // nepovolené znaky
-  if (!/\.docx$/i.test(f)) f += '.docx';
-  return f;
+  return f.replace(/\.(docx|pdf)$/i, '') + '.' + ext;
 }
 
 /* Živý náhled výsledného názvu v popisku pole. */

@@ -63,6 +63,8 @@ test('resolveFname — placeholdery, dvouciferné kolo, přípona, sanitizace', 
   assert.equal(resolveFname('a/b:c', '1', '1'), 'a_b_c.docx');  // nepovolené znaky → _
   assert.equal(resolveFname('hotovo.docx', '1', '1'), 'hotovo.docx'); // přípona se nepřidá 2×
   assert.equal(resolveFname('[soutez]_[kolo]', '1', 'finále'), '1_finále.docx'); // nečíselné kolo beze změny
+  assert.equal(resolveFname('[soutez]_[kolo]', '3327', '2', 'pdf'), '3327_02.pdf');
+  assert.equal(resolveFname('hotovo.docx', '1', '1', 'pdf'), 'hotovo.pdf');       // .docx v šabloně → .pdf
 });
 
 test('computeNameWidth — meze a monotónie', () => {
