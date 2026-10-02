@@ -24,7 +24,9 @@ const ctx = { window: { addEventListener() {} }, console };
 vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
-const { fmtHalf, abbrev, resolveFname, computeNameWidth, ttlFor } = ctx;
+const { fmtHalf, abbrev, resolveFname, computeNameWidth, ttlFor,
+        matchCols, standingsCols, refLine, matchName, parseCompetitions, findRegionOf } = ctx;
+const plain = o => JSON.parse(JSON.stringify(o));
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
   assert.equal(ttlFor('/competitions/3327/round/2/matches'), 600000);
@@ -101,14 +103,14 @@ function apiCtx(fetchImpl) {
 }
 const okJson = d => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(d) });
 
-test('apiGet — souběžná volání jdou s rozestupem ≥ 1,1 s, cache hit bez sítě', async () => {
+test('apiGet — souběžná volání jdou s rozestupem ≥ 300 ms, cache hit bez sítě', async () => {
   const times = [];
   const c = apiCtx(url => { times.push(Date.now()); return okJson({ url }); });
   const [a, b] = await Promise.all([c.apiGet('/a', null, true), c.apiGet('/b', null, true)]);
   assert.match(a.url, /api\.chess\.cz\/api\/a$/);
   assert.match(b.url, /\/api\/b$/);
   assert.equal(times.length, 2);
-  assert.ok(times[1] - times[0] >= 1095, 'rozestup ' + (times[1] - times[0]) + ' ms');
+  assert.ok(times[1] - times[0] >= 295, 'rozestup ' + (times[1] - times[0]) + ' ms');
   await c.apiGet('/a', null, true);           // z cache
   assert.equal(times.length, 2);
 });
@@ -119,4 +121,42 @@ test('apiGet — po 429 se další dotazy odmítnou bez volání fetch', async (
   await assert.rejects(c.apiGet('/x', null, true), /429/);
   await assert.rejects(c.apiGet('/y', null, true), /blokováno/);
   assert.equal(calls, 1);
+});
+
+test('standingsCols — součet = šířka sazby (9026 DXA), Družstvo dopočítané', () => {
+  const ws = standingsCols();
+  assert.equal(ws.length, 9);
+  assert.equal(ws.reduce((a, b) => a + b, 0), 9026);
+  assert.ok(ws[1] > 3000);
+});
+
+test('matchCols — 6 sloupců, max. šířka jmen se vejde do sazby', () => {
+  const ws = matchCols(computeNameWidth([{ homeTeamName: 'X'.repeat(200), matchGames: [] }]));
+  assert.equal(ws.length, 6);
+  assert.ok(ws.reduce((a, b) => a + b, 0) <= 9026);
+});
+
+test('refLine — „Rozhodčí: " + jméno, prázdné jméno ponechá jen popisek', () => {
+  assert.equal(refLine(''), 'Rozhodčí: ');
+  assert.equal(refLine(null), 'Rozhodčí: ');
+  assert.equal(refLine('  Jan Novák '), 'Rozhodčí: Jan Novák');
+});
+
+test('matchName — bez diakritiky, všechna slova', () => {
+  assert.ok(matchName('Krajský přebor SŠS', 'krajsky preb'));
+  assert.ok(matchName('Regionální soutěž D', 'soutez regio'));
+  assert.ok(!matchName('Krajský přebor', 'divize'));
+});
+
+test('parseCompetitions + findRegionOf — řazení a dohledání kraje podle ID', () => {
+  const regs = parseCompetitions({
+    '13': { regionName: 'Středočeský šachový svaz', competitions: [
+      { compId: 2, compName: 'Regionální soutěž', compLevel: 3 },
+      { compId: 1, compName: 'Krajský přebor', compLevel: 1 }] },
+    '98': { regionName: 'Šachový svaz ČR', competitions: { compId: 9, compName: 'Extraliga', compLevel: 0 } },
+  });
+  assert.deepEqual(plain(regs.map(r => r.key)), ['13', '98']);           // podle názvu (cs)
+  assert.deepEqual(plain(regs[0].competitions.map(c => c.compId)), [1, 2]); // podle úrovně
+  assert.equal(findRegionOf(regs, '9').key, '98');                         // single → pole
+  assert.equal(findRegionOf(regs, 777), null);
 });

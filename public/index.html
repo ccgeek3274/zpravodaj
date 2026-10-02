@@ -92,7 +92,7 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
   font-size:13px; font-weight:600; height:44px; padding:0 16px; }
 .btn-outline:hover:not(:disabled) { background:var(--header); }
 
-#msg { margin-top:14px; font-size:13px; min-height:18px; font-family:var(--mono); color:var(--muted); }
+#msg, .msg2 { margin-top:14px; font-size:13px; min-height:18px; font-family:var(--mono); color:var(--muted); }
 .ok  { color:var(--ok); }
 .err { color:var(--err); }
 .note { margin-top:12px; padding:12px 14px; font-family:var(--sans); font-size:12.5px; color:var(--muted);
@@ -114,51 +114,74 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
 .hist-name { font-family:var(--sans); font-size:13px; font-weight:600; color:var(--ink); }
 .hist-tpl  { font-family:var(--mono); font-size:11.5px; color:var(--muted); }
 
-/* ── Lišta se stažením + náhled dokumentu ────────────────────── */
-#output { margin-top:16px; }
-#output:empty { display:none; }
-#dl-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
-/* lišta leží na tmavém pozadí (mimo kartu) → invertované barvy */
-#btn-dl  { background:var(--cream); color:var(--ink); border-color:var(--cream);
-  font-size:14px; font-weight:600; height:44px; padding:0 22px; }
-#btn-dl:hover { background:var(--paper); filter:brightness(0.94); }
-#btn-pdf { background:transparent; color:var(--cream); border:1px solid var(--muted-dark);
-  font-size:13px; font-weight:600; height:44px; padding:0 16px; }
-#btn-pdf:hover { border-color:var(--cream); }
+.stack { display:flex; flex-direction:column; gap:16px; }
+.row-l { display:grid; grid-template-columns:160px 1fr; gap:14px; align-items:start; }
+.hidden { display:none !important; }
 
-/* Náhled je „papír" — barvy odpovídají vygenerovanému DOCX, ne UI. */
+/* ── Combo s našeptáváním (stejné jako sscr-soupiska) ─────────── */
+.ac-wrap { position:relative; }
+.ac-drop { position:absolute; z-index:30; left:0; right:0; top:calc(100% + 4px); max-height:300px; overflow:auto;
+  overscroll-behavior:contain;
+  background:var(--field-bg); border:1px solid var(--field-bd); border-radius:var(--radius);
+  box-shadow:0 6px 18px rgba(20,16,10,.12); }
+.ac-item { display:flex; gap:10px; align-items:baseline; width:100%; height:auto; padding:10px 14px; text-align:left;
+  border:none; border-bottom:1px solid var(--divider); border-radius:0; background:var(--field-bg); cursor:pointer; }
+.ac-item:last-child { border-bottom:none; }
+.ac-item:hover { background:var(--header); }
+.ac-item .nm { font-family:var(--sans); font-weight:600; font-size:14.5px; color:var(--ink); }
+.ac-empty { padding:11px 14px; font-size:13.5px; color:var(--muted-2); }
+input:disabled { opacity:.6; cursor:not-allowed; }
+
+/* ── Přepínač Ano / Ne ─────────────────────────────────────────── */
+.seg { display:inline-flex; border:1px solid var(--ink); border-radius:var(--radius); overflow:hidden; }
+.seg button { height:34px; padding:0 16px; font-size:13px; font-weight:600; border:none; border-radius:0;
+  background:var(--field-bg); color:var(--ink); }
+.seg button + button { border-left:1px solid var(--ink); }
+.seg button.on { background:var(--ink); color:var(--cream); }
+
+/* ── Náhled dokumentu ───────────────────────────────────────────
+   Rozměry 1:1 s DOCX: 1 px = 15 DXA (1440 DXA = 1 in = 96 px),
+   pt × 4/3 = px. Stránka A4 = 794 px, okraje 2,54 cm = 96 px,
+   tabulky table-layout:fixed se stejnými šířkami sloupců jako v DOCX. */
+.preview-body { padding:12px; background:var(--header); overflow-x:auto; }
 .doc {
-  background:#fff; color:#000; font-family:Arial, sans-serif;
-  border:1px solid var(--ink); border-radius:var(--radius);
-  padding:36px 40px; overflow-x:auto;
+  width:794px; margin:0 auto; background:#fff; color:#000;
+  font-family:Arial, Helvetica, sans-serif; font-size:14.67px; line-height:1.15;
+  padding:26px 96px 96px; border:1px solid var(--divider);
 }
-.doc-hdr { text-align:right; font-size:11px; line-height:1.25; margin-bottom:8px; }
-.doc h1 { text-align:center; font-size:20px; margin:6px 0 16px; }
-.doc h2 { font-size:13px; font-weight:bold; margin:16px 0 6px; }
-/* šířka podle obsahu (ne 100 %) → buňky se neroztahují */
-.doc table { border-collapse:collapse; width:auto; max-width:100%; margin-bottom:6px; font-size:13px; }
-.doc td, .doc th { border:1px solid #aaa; padding:2px 7px; vertical-align:middle; }
+.doc-hdr { text-align:right; font-size:10.67px; line-height:1.05; margin-bottom:6px; min-height:27px; }
+.doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; }
+.doc .d-h { font-size:13.33px; font-weight:bold; margin:13.33px 0 5.33px; }
+.doc .d-h.first { margin-top:4px; }
+.doc .d-p { margin:0 0 6.67px; }
+.doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.15; }
+.doc table.res { margin-bottom:8px; }
+.doc td, .doc th { border:1px solid #AAA; padding:1.6px 6px; vertical-align:middle;
+  overflow:hidden; white-space:nowrap; font-weight:normal; }
 .doc .c { text-align:center; } .doc .r { text-align:right; } .doc .l { text-align:left; }
-.doc tr.mh td { background:#C8D9F0; font-weight:bold; }
+.doc tr.mh td { background:#C8D9F0; font-weight:bold; padding-top:1px; padding-bottom:1px; }
 .doc table.stand th { background:#C8D9F0; font-weight:bold; }
 .doc table.stand tbody tr:nth-child(even) td { background:#F2F2F2; }
-.doc table.res td.elo, .doc table.res td.num { white-space:nowrap; }
-.doc p { margin:4px 0; font-size:13px; }
+/* Upravitelná místa — zvýraznění jen na obrazovce, v tisku zmizí */
+.doc .ed { outline:none; background:#fff6cc; box-shadow:inset 0 -1px 0 #c9a227; border-radius:1px; }
+.doc .ed:focus { background:#ffeb99; }
+.doc span.ed { display:inline-block; min-width:12em; vertical-align:bottom; }
+.doc div.ed { white-space:pre-wrap; line-height:23.5px; min-height:23.5px; margin-bottom:6.67px; }
 
 @media (max-width:640px) {
   body { padding:32px 16px 60px; }
-  .row { grid-template-columns:1fr; }
-  .doc { padding:20px 16px; }
+  .row, .row-l { grid-template-columns:1fr; }
+  .preview-body { padding:8px; }
 }
 
-/* tisk → uložit jako PDF: schovej formulář, ukaž jen dokument */
+/* tisk → uložit jako PDF: jen dokument, okraje jako v DOCX */
+@page { size:A4; margin:1.4cm 2.54cm 2.54cm; }
 @media print {
   body { background:#fff; padding:0; }
   body * { visibility:hidden; }
-  #output, #output * { visibility:visible; }
-  #output { position:absolute; left:0; top:0; width:100%; margin:0; }
-  #dl-bar { display:none !important; }
-  .doc { border:none; padding:0; overflow:visible; }
+  .doc, .doc * { visibility:visible; }
+  .doc { position:absolute; left:0; top:0; width:auto; border:none; padding:0; }
+  .doc .ed { background:none; box-shadow:none; }
 }
 </style>
 </head>
@@ -171,13 +194,40 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
     <p class="app-sub">Generátor zpravodaje kola soutěže družstev ŠSČR do DOCX — data z api.chess.cz.</p>
   </div>
 
+  <div class="stack">
+
   <div class="card">
     <div class="card-strip">
-      <h2>Zadání</h2>
-      <span class="strip-right">~1 dotaz / s</span>
+      <h2>1 · Zadání</h2>
     </div>
     <div class="card-body">
       <div id="history"></div>
+
+      <div class="field row-l">
+        <div>
+          <label class="eyebrow" for="season">Sezóna</label>
+          <div class="ac-wrap">
+            <input type="text" id="season" placeholder="— sezóna —" autocomplete="off">
+            <div id="seasonDrop" class="ac-drop" style="display:none"></div>
+          </div>
+        </div>
+        <div>
+          <label class="eyebrow" for="kraj">Kraj / svaz</label>
+          <div class="ac-wrap">
+            <input type="text" id="kraj" placeholder="načítám…" autocomplete="off" disabled>
+            <div id="krajDrop" class="ac-drop" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="eyebrow" for="soutezSel">Soutěž</label>
+        <div class="ac-wrap">
+          <input type="text" id="soutezSel" placeholder="— nejprve vyberte kraj —" autocomplete="off" disabled>
+          <div id="soutezSelDrop" class="ac-drop" style="display:none"></div>
+        </div>
+        <span class="hint">Vybraná soutěž vyplní ID níže. ID lze zadat i ručně.</span>
+      </div>
 
       <div class="field row">
         <div>
@@ -192,14 +242,12 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
       </div>
 
       <div class="field">
-        <label class="eyebrow" for="poznamka">Doplňující text — sekce „Různé"</label>
-        <textarea id="poznamka">Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.</textarea>
-      </div>
-
-      <div class="field">
-        <label class="eyebrow" for="fname">Název souboru: <span id="fnamePreview" class="fname-preview"></span></label>
-        <input type="text" id="fname" value="[soutez]_[kolo]" spellcheck="false">
-        <span class="hint">Placeholdery: <code>[soutez]</code> = ID soutěže, <code>[kolo]</code> = číslo kola</span>
+        <span class="eyebrow">Rozhodčí</span>
+        <div class="seg" id="refSeg">
+          <button type="button" data-v="1" class="on">Ano</button>
+          <button type="button" data-v="0">Ne</button>
+        </div>
+        <span class="hint">Pod každý zápas přidá řádek „Rozhodčí: …“ — jméno doplníte v náhledu.</span>
       </div>
 
       <div class="actions">
@@ -212,8 +260,41 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
     </div>
   </div>
 
-  <div id="output"></div>
+  <div class="card hidden" id="sec-preview">
+    <div class="card-strip">
+      <h2>2 · Náhled a úpravy</h2>
+      <span class="strip-right">žlutá pole lze přepsat</span>
+    </div>
+    <div class="preview-body">
+      <div id="preview"></div>
+    </div>
+  </div>
 
+  <div class="card hidden" id="sec-download">
+    <div class="card-strip">
+      <h2>3 · Stažení</h2>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="eyebrow" for="fname">Název souboru: <span id="fnamePreview" class="fname-preview"></span></label>
+        <input type="text" id="fname" value="[soutez]_[kolo]" spellcheck="false">
+        <span class="hint">Placeholdery: <code>[soutez]</code> = ID soutěže, <code>[kolo]</code> = číslo kola</span>
+      </div>
+      <div class="actions">
+        <button id="btn-dl" class="btn-primary" onclick="downloadDocx()">⬇ Stáhnout DOCX</button>
+        <button id="btn-pdf" class="btn-outline" onclick="window.print()">Uložit jako PDF (tisk)</button>
+      </div>
+      <div id="dlMsg" class="msg2"></div>
+      <div class="note">
+        • DOCX se sestaví až při stažení — obsahuje vše, co jste v náhledu doplnili.<br>
+        • Náhled odpovídá DOCX rozměry tabulek; zalomení stránek a tisk z prohlížeče se mohou lišit.
+          Nejlepšího PDF dosáhnete exportem staženého DOCX z Office.<br>
+        • Tabulka pořadí odpovídá <b>datu generování</b> zpravodaje — pořadí k předchozím kolům nelze vygenerovat.
+      </div>
+    </div>
+  </div>
+
+  </div>
 </div>
 
 <script>
@@ -239,9 +320,9 @@ const COL_ELO    = 640;
 // COL_NAME se počítá dynamicky podle nejdelšího jména (viz computeNameWidth)
 
 const FS = 20;             // 10 pt (half-points)
-// Min. rozestup mezi voláními API (ms). chess.cz agresivně blokuje IP při
-// nárazovém přístupu — držíme ~1 req/s (stejně jako sscr-soupiska).
-const API_INTERVAL = 1100;
+// Min. rozestup mezi voláními API (ms). Serializovaná fronta s 300 ms
+// je pro chess.cz bezpečná; nárazy (paralelní dávky) by IP zablokovaly.
+const API_INTERVAL = 300;
 const BLOCK_MS     = 10 * 60 * 1000;   // self-block po 429/síťové chybě (10 min)
 
 // Barvy (jen řetězce)
@@ -259,7 +340,7 @@ const B_ALL = { top: B_S, bottom: B_S, left: B_S, right: B_S };
    (table) — držíme jen 10 min. Tabulka se přepočítává současně s výsledky,
    takže po aktualizaci matches nesmí pořadí viset hodinu na starých datech.
    (Stejný princip krátkého TTL jako proxy v pgn-base; ne skip-empty logikou.)
-   Ostatní endpointy (details, schedule) 1 h. */
+   Ostatní endpointy (details, seznam soutěží) 1 h. */
 const TTL_DEFAULT = 3_600_000;   // 1 h
 const TTL_LIVE    =   600_000;   // 10 min (matches + table)
 function ttlFor(path) {
@@ -341,8 +422,8 @@ function apiGet(path, label, quiet, force) {
 }
 
 /* ── Pomocné funkce ─────────────────────────────────────────────── */
-function setMsg(html, cls) {
-  document.getElementById('msg').innerHTML =
+function setMsg(html, cls, target) {
+  document.getElementById(target || 'msg').innerHTML =
     cls ? '<span class="' + cls + '">' + html + '</span>'
         : '<span>' + html + '</span>';
 }
@@ -420,6 +501,23 @@ function computeNameWidth(matchList) {
   return Math.max(1200, Math.min(w, maxAllowed));
 }
 
+/* Sloupce výsledkové tabulky (DXA) — sdílí DOCX i HTML náhled. */
+function matchCols(nameW) {
+  return [COL_BOARD, nameW, COL_ELO, COL_RESULT, COL_ELO, nameW];
+}
+/* Sloupce tabulky pořadí (DXA): P | Družstvo | Z | + | = | − | B | Sk | V,
+   Družstvo dopočítá zbytek do šířky sazby. */
+function standingsCols() {
+  const ws = [480, 0, 520, 520, 520, 520, 620, 700, 620];
+  ws[1] = CONTENT - ws.reduce(function(a, b) { return a + b; }, 0);
+  return ws;
+}
+function sum(arr) { return arr.reduce(function(a, b) { return a + b; }, 0); }
+
+/* Text řádku s rozhodčím pod zápasem. */
+const REF_LABEL = 'Rozhodčí: ';
+function refLine(name) { return REF_LABEL + String(name || '').trim(); }
+
 /* ── Buňka ──────────────────────────────────────────────────────── */
 function cell(text, opts) {
   opts = opts || {};
@@ -449,10 +547,13 @@ function cell(text, opts) {
 }
 
 /* ── Tabulka jednoho zápasu (6 sloupců) ─────────────────────────── */
-function buildMatchTable(match, matchNr, nameW) {
+function buildMatchTable(match, matchNr, nameW, refName) {
+  // refName: null = bez řádku rozhodčího, jinak jméno (i prázdné)
+  const withRef = refName != null;
   const games   = norm(match.matchGames);
   const score   = fmtScore(match.homeTeamScore, match.awayTeamScore);
-  const tableW  = COL_BOARD + nameW + COL_ELO + COL_RESULT + COL_ELO + nameW;
+  const cols    = matchCols(nameW);
+  const tableW  = sum(cols);
   const rows    = [];
 
   // Záhlaví zápasu (modré): číslo | DOMÁCÍ (span2, vlevo) | skóre | HOSTÉ (span2, vpravo)
@@ -465,7 +566,8 @@ function buildMatchTable(match, matchNr, nameW) {
 
   // Partie: č. | dom.jméno(vlevo) | dom.ELO(vpravo) | výsledek | hosté ELO(vlevo) | hosté jméno(vlevo)
   games.forEach(function(game, idx) {
-    const kn = idx < games.length - 1;   // poslední řádek bez keepNext (neslepovat s textem za tabulkou)
+    // poslední řádek tabulky bez keepNext (neslepovat s textem za tabulkou)
+    const kn = idx < games.length - 1 || withRef;
     rows.push(new docx.TableRow({ cantSplit: true, children: [
       cell(idx + 1,                       { w: COL_BOARD,  align: 'center', keepNext: kn }),
       cell(game.homePlayerName || '',     { w: nameW,      align: 'left',   keepNext: kn }),
@@ -476,18 +578,23 @@ function buildMatchTable(match, matchNr, nameW) {
     ]}));
   });
 
+  // Rozhodčí: jedna buňka přes celou šířku tabulky
+  if (withRef) {
+    rows.push(new docx.TableRow({ cantSplit: true, children: [
+      cell(refLine(refName), { w: tableW, span: 6, align: 'left' }),
+    ]}));
+  }
+
   return new docx.Table({
     width: { size: tableW, type: 'dxa' },
-    columnWidths: [COL_BOARD, nameW, COL_ELO, COL_RESULT, COL_ELO, nameW],
+    columnWidths: cols,
     rows: rows,
   });
 }
 
 /* ── Tabulka pořadí ─────────────────────────────────────────────── */
 function buildStandingsTable(teamList) {
-  // P | Družstvo | Z | + | = | − | B | Sk | V
-  var ws = [480, 0, 520, 520, 520, 520, 620, 700, 620];
-  ws[1] = CONTENT - ws.reduce(function(a, b) { return a + b; }, 0);
+  var ws = standingsCols();
 
   var hdrs   = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
   var aligns = ['center','left','center','center','center','center','center','center','center'];
@@ -543,93 +650,201 @@ function gap() {
   return new docx.Paragraph({ spacing: { before: 0, after: 0, line: 120, lineRule: 'auto' }, children: [] });
 }
 
-/* ── HTML náhled (jednoduchý, bez přesných šířek) ───────────────── */
-let _lastBlob = null;   // poslední vygenerovaný DOCX blob
-let _lastFname = '';    // a jeho název
+/* ── Stav vygenerovaného zpravodaje ─────────────────────────────
+   Generování = načtení dat + náhled. Úpravy v náhledu (rozhodčí,
+   sekce Různé) se píšou sem; DOCX se z toho sestaví až při stažení. */
+const DEFAULT_POZNAMKA = 'Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.';
+let _doc = null;      // { compId, kolo, compName, regionName, jmeno, dateStr, matchList, teamList, nameW, refs[] }
+let _poznamka = DEFAULT_POZNAMKA;
+let _withRef = true;  // přepínač Rozhodčí
 
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function previewHtml(d) {
+/* DXA → px pro náhled (1 px = 15 DXA). */
+function px(dxa) { return (dxa / 15).toFixed(2) + 'px'; }
+function colgroup(ws) {
+  return '<colgroup>' + ws.map(function(w) { return '<col style="width:' + px(w) + '">'; }).join('') + '</colgroup>';
+}
+
+function standingsVals(t, idx) {
+  return [
+    t.teamRank != null ? t.teamRank : (idx + 1), t.teamName || '',
+    t.matchesPlayed != null ? t.matchesPlayed : 0, t.matchWins != null ? t.matchWins : 0,
+    t.matchDraws != null ? t.matchDraws : 0, t.matchLosses != null ? t.matchLosses : 0,
+    t.points != null ? t.points : 0, fmtHalf(t.score), t.wonGames != null ? t.wonGames : 0
+  ];
+}
+
+/* ── HTML náhled — rozměry tabulek 1:1 s DOCX ───────────────────── */
+function previewHtml(d, withRef, poznamka) {
   let h = '<div class="doc">';
 
   const hdr = [d.regionName, d.compName].filter(Boolean).map(esc).join('<br>');
-  if (hdr) h += '<div class="doc-hdr">' + hdr + '</div>';
+  h += '<div class="doc-hdr">' + hdr + '</div>';
+  h += '<div class="d-title">' + esc('Zpravodaj z kola č. ' + d.kolo) + '</div>';
 
-  h += '<h1>' + esc('Zpravodaj z kola č. ' + d.kolo) + '</h1>';
-
-  // 1. Výsledky — každý zápas vlastní tabulka
-  h += '<h2>1. Výsledky</h2>';
+  // 1. Výsledky — každý zápas vlastní tabulka, všechny stejně široké
+  h += '<div class="d-h first">1. Výsledky</div>';
+  const mc = matchCols(d.nameW), mw = px(sum(mc));
   d.matchList.forEach(function(m, mi) {
     const nr = d.kolo + '.' + (mi + 1);
-    h += '<table class="res"><tbody>';
+    h += '<table class="res" style="width:' + mw + '">' + colgroup(mc) + '<tbody>';
     h += '<tr class="mh">'
-       + '<td class="c num">' + esc(nr) + '</td>'
+       + '<td class="c">' + esc(nr) + '</td>'
        + '<td colspan="2">' + esc(m.homeTeamName || '') + '</td>'
-       + '<td class="c num">' + esc(fmtScore(m.homeTeamScore, m.awayTeamScore)) + '</td>'
+       + '<td class="c">' + esc(fmtScore(m.homeTeamScore, m.awayTeamScore)) + '</td>'
        + '<td class="r" colspan="2">' + esc(m.awayTeamName || '') + '</td>'
        + '</tr>';
     norm(m.matchGames).forEach(function(g, idx) {
       h += '<tr>'
-         + '<td class="c num">' + (idx + 1) + '</td>'
+         + '<td class="c">' + (idx + 1) + '</td>'
          + '<td>' + esc(g.homePlayerName || '') + '</td>'
-         + '<td class="r elo">' + esc(eloStr(g.homePlayerRating)) + '</td>'
-         + '<td class="c num">' + esc(fmtResult(g.homePlayerResult, g.awayPlayerResult)) + '</td>'
-         + '<td class="elo">' + esc(eloStr(g.awayPlayerRating)) + '</td>'
+         + '<td class="r">' + esc(eloStr(g.homePlayerRating)) + '</td>'
+         + '<td class="c">' + esc(fmtResult(g.homePlayerResult, g.awayPlayerResult)) + '</td>'
+         + '<td>' + esc(eloStr(g.awayPlayerRating)) + '</td>'
          + '<td>' + esc(g.awayPlayerName || '') + '</td>'
          + '</tr>';
     });
+    if (withRef) {
+      h += '<tr><td colspan="6">' + esc(REF_LABEL)
+         + '<span class="ed" contenteditable="plaintext-only" spellcheck="false" data-ref="' + mi + '">'
+         + esc(d.refs[mi] || '') + '</span></td></tr>';
+    }
     h += '</tbody></table>';
   });
 
   // 2. Pořadí
-  h += '<h2>2. Pořadí družstev</h2>';
+  h += '<div class="d-h">2. Pořadí družstev</div>';
+  const sc = standingsCols();
   const hd = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
-  h += '<table class="stand"><thead><tr>'
+  h += '<table class="stand" style="width:' + px(sum(sc)) + '">' + colgroup(sc) + '<thead><tr>'
      + hd.map(function(x, i) { return '<th class="' + (i === 1 ? 'l' : 'c') + '">' + esc(x) + '</th>'; }).join('')
      + '</tr></thead><tbody>';
   d.teamList.forEach(function(t, idx) {
-    const vals = [
-      t.teamRank != null ? t.teamRank : (idx + 1), t.teamName || '',
-      t.matchesPlayed != null ? t.matchesPlayed : 0, t.matchWins != null ? t.matchWins : 0,
-      t.matchDraws != null ? t.matchDraws : 0, t.matchLosses != null ? t.matchLosses : 0,
-      t.points != null ? t.points : 0, fmtHalf(t.score), t.wonGames != null ? t.wonGames : 0
-    ];
-    h += '<tr>' + vals.map(function(v, i) {
+    h += '<tr>' + standingsVals(t, idx).map(function(v, i) {
       return '<td class="' + (i === 1 ? 'l' : 'c') + '">' + esc(v) + '</td>';
     }).join('') + '</tr>';
   });
   h += '</tbody></table>';
 
-  // 3. Různé
-  h += '<h2>3. Různé a ostatní</h2>';
-  if (d.poznamka) d.poznamka.split('\n').forEach(function(line) { h += '<p>' + esc(line) + '</p>'; });
-  if (d.jmeno) h += '<p><b>' + esc(d.jmeno) + '</b></p>';
-  h += '<p>' + esc(d.dateStr) + '</p>';
+  // 3. Různé — text je upravitelný přímo v náhledu
+  h += '<div class="d-h">3. Různé a ostatní</div>';
+  h += '<div class="ed" id="pozn" contenteditable="plaintext-only">' + esc(poznamka) + '</div>';
+  if (d.jmeno) h += '<div class="d-p" style="margin-top:5.33px"><b>' + esc(d.jmeno) + '</b></div>';
+  h += '<div class="d-p">' + esc(d.dateStr) + '</div>';
 
   h += '</div>';
   return h;
 }
 
-function downloadDocx() {
-  if (!_lastBlob) return;
-  const url = URL.createObjectURL(_lastBlob);
-  const a = document.createElement('a');
-  a.href = url; a.download = _lastFname; a.click();
-  setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+/* Vykreslí náhled a napojí upravitelná místa na stav. */
+function renderPreview() {
+  if (!_doc) return;
+  const box = document.getElementById('preview');
+  box.innerHTML = previewHtml(_doc, _withRef, _poznamka);
+  [].forEach.call(box.querySelectorAll('[data-ref]'), function(el) {
+    el.addEventListener('input', function() { _doc.refs[+el.dataset.ref] = el.innerText.replace(/\s+/g, ' '); });
+    // jméno je jednořádkové: Enter = přejdi na další rozhodčí / opusť pole
+    el.addEventListener('keydown', function(e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const next = box.querySelector('[data-ref="' + (+el.dataset.ref + 1) + '"]');
+      if (next) next.focus(); else el.blur();
+    });
+  });
+  const pz = document.getElementById('pozn');
+  pz.addEventListener('input', function() { _poznamka = pz.innerText.replace(/\n+$/, ''); });
 }
 
-function printPreview() { window.print(); }
+/* ── Sestavení DOCX ze stavu (až při stažení) ───────────────────── */
+function buildDocx(d, withRef, poznamka) {
+  const children = [
+    para('Zpravodaj z kola č. ' + d.kolo, { bold: true, align: 'center', size: 32, after: 160 }),
+    para('1. Výsledky', { bold: true, size: FS, before: 60, after: 80 }),
+  ];
 
-/* ── Hlavní generátor ───────────────────────────────────────────── */
+  d.matchList.forEach(function(match, mi) {
+    const ref = withRef ? (d.refs[mi] || '') : null;
+    children.push(buildMatchTable(match, d.kolo + '.' + (mi + 1), d.nameW, ref));
+    if (mi < d.matchList.length - 1) children.push(gap());
+  });
+
+  children.push(para('2. Pořadí družstev', { bold: true, size: FS, before: 200, after: 80 }));
+  children.push(buildStandingsTable(d.teamList));
+  children.push(para('3. Různé a ostatní', { bold: true, size: FS, before: 200, after: 80 }));
+
+  String(poznamka || '').trim().split('\n').forEach(function(line) {
+    if (line.trim()) children.push(para(line));
+  });
+  if (d.jmeno) children.push(para(d.jmeno, { bold: true, before: 80 }));
+  children.push(para(d.dateStr));
+
+  /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
+  const headerLines = [];
+  if (d.regionName) headerLines.push(d.regionName);
+  headerLines.push(d.compName);
+  const pageHeader = new docx.Header({
+    children: headerLines.map(function(line) {
+      return new docx.Paragraph({
+        alignment: 'right',
+        spacing: { before: 0, after: 0, line: 200, lineRule: 'auto' },
+        children: [new docx.TextRun({ text: line, size: 16, font: 'Arial' })]
+      });
+    })
+  });
+
+  /* header 0,7 cm od okraje; horní okraj zmenšen na 1,4 cm (méně místa nahoře) */
+  return new docx.Document({
+    styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+    sections: [{
+      headers: { default: pageHeader },
+      properties: {
+        page: {
+          size:   { width: PAGE_W, height: PAGE_H },
+          margin: {
+            top: Math.round(1.4 * CM), right: MARGIN, bottom: MARGIN, left: MARGIN,
+            header: Math.round(0.7 * CM), footer: Math.round(0.7 * CM)
+          }
+        }
+      },
+      children: children,
+    }]
+  });
+}
+
+async function downloadDocx() {
+  if (!_doc) return;
+  const btn = document.getElementById('btn-dl');
+  btn.disabled = true;
+  try {
+    setMsg('Sestavuji DOCX…', null, 'dlMsg');
+    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, _poznamka));
+    const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
+    const fname = resolveFname(tpl, _doc.compId, _doc.kolo);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+    // Historie: soutěž + šablona názvu souboru
+    saveHistoryEntry({ compId: _doc.compId, compName: _doc.compName, fname: tpl, ts: Date.now() });
+    setMsg('✓ Staženo: ' + esc(fname), 'ok', 'dlMsg');
+  } catch (e) {
+    setMsg('Chyba: ' + esc(e.message), 'err', 'dlMsg');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── Generování: načtení dat + náhled ───────────────────────────── */
 async function generate() {
   const compId   = document.getElementById('compId').value.trim();
   const kolo     = document.getElementById('kolo').value.trim();
-  const poznamka = document.getElementById('poznamka').value.trim();
 
-  if (!compId || !kolo) { setMsg('Vyplňte compId a číslo kola.', 'err'); return; }
+  if (!compId || !kolo) { setMsg('Vyplňte ID soutěže a číslo kola.', 'err'); return; }
 
   const btn = document.getElementById('btn-gen');
   btn.disabled = true;   // dvojklik by frontu zbytečně zdvojil
@@ -643,112 +858,32 @@ async function generate() {
     const matches   = await apiGet(matchesPath, 'výsledky');
     const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí', false, !matchesFromCache);
 
-    let roundDate = '';
-    try {
-      const sched = await apiGet('/competitions/' + compId + '/round/' + kolo + '/schedule', 'termín kola');
-      roundDate = fmtDateCz(sched.roundDate || '');
-    } catch (_) {}
+    const matchList = norm(matches);
+    // Stejná soutěž a kolo → doplněná jména rozhodčích zůstanou
+    const keepRefs = _doc && _doc.compId === compId && _doc.kolo === kolo
+                     && _doc.matchList.length === matchList.length;
 
-    const compName   = details.compName   || ('Soutěž ' + compId);
-    const regionName = details.regionName || '';
-    const jmeno      = vedouciName(details.compManagerName);
-    const matchList  = norm(matches);
-    const teamList   = norm(standings);
+    _doc = {
+      compId: compId, kolo: kolo,
+      compName:   details.compName   || ('Soutěž ' + compId),
+      regionName: details.regionName || '',
+      jmeno:      vedouciName(details.compManagerName),
+      dateStr:    todayCz(),
+      matchList:  matchList,
+      teamList:   norm(standings),
+      nameW:      computeNameWidth(matchList),
+      refs:       keepRefs ? _doc.refs : matchList.map(function() { return ''; }),
+    };
 
-    console.log('details:', details);
-    console.log('matches[0]:', matchList[0]);
-    console.log('standings[0]:', teamList[0]);
-
-    /* ── Obsah dokumentu ── */
-    const children = [
-      para('Zpravodaj z kola č. ' + kolo, { bold: true, align: 'center', size: 32, after: 160 }),
-      para('1. Výsledky', { bold: true, size: FS, before: 60, after: 80 }),
-    ];
-
-    const nameW = computeNameWidth(matchList);
-    matchList.forEach(function(match, mi) {
-      children.push(buildMatchTable(match, kolo + '.' + (mi + 1), nameW));
-      if (mi < matchList.length - 1) children.push(gap());
-    });
-
-    children.push(para('2. Pořadí družstev', { bold: true, size: FS, before: 200, after: 80 }));
-    children.push(buildStandingsTable(teamList));
-    children.push(para('3. Různé a ostatní', { bold: true, size: FS, before: 200, after: 80 }));
-
-    if (poznamka) {
-      poznamka.split('\n').forEach(function(line) { children.push(para(line)); });
-    }
-    if (jmeno) children.push(para(jmeno, { bold: true, before: 80 }));
-    children.push(para(todayCz()));
-
-    /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
-    const headerLines = [];
-    if (regionName) headerLines.push(regionName);
-    headerLines.push(compName);
-    const pageHeader = new docx.Header({
-      children: headerLines.map(function(line) {
-        return new docx.Paragraph({
-          alignment: 'right',
-          spacing: { before: 0, after: 0, line: 200, lineRule: 'auto' },
-          children: [new docx.TextRun({ text: line, size: 16, font: 'Arial' })]
-        });
-      })
-    });
-
-    /* ── Dokument ──
-       header 0,7 cm od okraje; horní okraj zmenšen na 1,4 cm (méně místa nahoře) */
-    const doc = new docx.Document({
-      styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
-      sections: [{
-        headers: { default: pageHeader },
-        properties: {
-          page: {
-            size:   { width: PAGE_W, height: PAGE_H },
-            margin: {
-              top: Math.round(1.4 * CM), right: MARGIN, bottom: MARGIN, left: MARGIN,
-              header: Math.round(0.7 * CM), footer: Math.round(0.7 * CM)
-            }
-          }
-        },
-        children: children,
-      }]
-    });
-
-    setMsg('Generuji soubor…');
-    const blob = await docx.Packer.toBlob(doc);
-
-    // Název souboru z šablony: [soutez] → compId, [kolo] → číslo kola
-    const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
-    const fname = resolveFname(tpl, compId, kolo);
-
-    _lastBlob = blob;
-    _lastFname = fname;
-
-    // Ulož do historie (soutěž + šablona názvu souboru)
-    saveHistoryEntry({ compId: compId, compName: compName, fname: tpl, ts: Date.now() });
-
-    // Náhled pod formulářem + lišta s tlačítky (žádné automatické stažení)
-    document.getElementById('output').innerHTML =
-      '<div id="dl-bar">'
-      + '<button id="btn-dl" onclick="downloadDocx()">⬇ Stáhnout soubor ' + esc(fname) + '</button>'
-      + '<button id="btn-pdf" onclick="printPreview()">Uložit jako PDF (tisk)</button>'
-      + '</div>'
-      + previewHtml({
-          kolo: kolo, compName: compName, regionName: regionName,
-          matchList: matchList, teamList: teamList,
-          poznamka: poznamka, jmeno: jmeno, dateStr: todayCz()
-        });
-
-    document.getElementById('msg').innerHTML =
-      '<span class="ok">✓ Hotovo — náhled níže. Soubor stáhneš tlačítkem nad dokumentem.</span>'
-      + '<div class="note">'
-      + '• Vzhled se mezi <b>zobrazeným náhledem</b>, <b>DOCX</b> a <b>tiskem</b> liší. '
-      + 'Nejlepšího výsledku dosáhnete stažením DOCX a exportem do PDF přímo z Office.<br>'
-      + '• Tabulka pořadí odpovídá <b>datu generování</b> zpravodaje — pořadí k předchozím kolům nelze vygenerovat.'
-      + '</div>';
-
+    renderPreview();
+    document.getElementById('sec-preview').classList.remove('hidden');
+    document.getElementById('sec-download').classList.remove('hidden');
+    setMsg('', null, 'dlMsg');
+    updateFnamePreview();
+    setMsg('✓ Hotovo — v náhledu doplňte rozhodčí a sekci Různé, stažení je na konci.', 'ok');
+    document.getElementById('sec-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
-    setMsg('Chyba: ' + e.message, 'err');
+    setMsg('Chyba: ' + esc(e.message), 'err');
     console.error(e);
   } finally {
     btn.disabled = false;
@@ -857,6 +992,168 @@ async function lookupCompName() {
   }
 }
 
+/* ── Výběr soutěže: Sezóna → Kraj → Soutěž (jako sscr-soupiska) ──
+   Výběr soutěže jen vyplní ID; ruční zadání ID zůstává. Naopak ručně
+   zadané ID se v combech dohledá, pokud patří do zvolené sezóny. */
+function stripDiacritics(s) {
+  return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function fold(s) { return stripDiacritics(s).toLowerCase().trim(); }
+
+/* Shoda pro našeptávač: všechna slova dotazu se musí objevit v textu. */
+function matchName(text, query) {
+  const t = fold(text), q = fold(query);
+  if (!q) return true;
+  return q.split(/\s+/).every(function(w) { return t.indexOf(w) !== -1; });
+}
+
+/* /competitions/{rok} → seřazené pole regionů s jejich soutěžemi. */
+function parseCompetitions(json) {
+  const out = [];
+  Object.keys(json || {}).forEach(function(key) {
+    const r = json[key];
+    if (!r) return;
+    out.push({
+      key: key,
+      regionName: r.regionName || ('Region ' + key),
+      competitions: norm(r.competitions).slice().sort(function(a, b) {
+        return (a.compLevel || 0) - (b.compLevel || 0) || String(a.compName).localeCompare(String(b.compName), 'cs');
+      }),
+    });
+  });
+  out.sort(function(a, b) { return a.regionName.localeCompare(b.regionName, 'cs'); });
+  return out;
+}
+
+/* Region, do kterého soutěž patří (nebo null). */
+function findRegionOf(regions, compId) {
+  return regions.find(function(r) {
+    return r.competitions.some(function(c) { return String(c.compId) === String(compId); });
+  }) || null;
+}
+
+/* Sezóna začíná v září; nabízíme aktuální a 3 předchozí. */
+function currentSeasonStart() {
+  const d = new Date();
+  return d.getMonth() < 8 ? d.getFullYear() - 1 : d.getFullYear();
+}
+function seasonItems() {
+  const cur = currentSeasonStart(), out = [];
+  for (let y = cur; y >= cur - 3; y--) out.push({ value: String(y), label: y + '/' + (y + 1) });
+  return out;
+}
+
+/* Obecný výběr s našeptáváním: fokus ukáže celou nabídku, psaním se filtruje
+   (bez diakritiky), kliknutím se vybere a zavolá se onPick. Programové .set()
+   onPick nevolá. Očekává input #id a dropdown #idDrop. */
+function createCombo(id, cfg) {
+  cfg = cfg || {};
+  const input = document.getElementById(id), drop = document.getElementById(id + 'Drop');
+  const c = {
+    items: [], value: '', label: '',
+    setItems: function(items, placeholder) {
+      c.items = items || [];
+      input.disabled = false;
+      input.placeholder = placeholder || '';
+      c.reset();
+    },
+    disable: function(placeholder) {
+      c.items = [];
+      input.disabled = true;
+      input.placeholder = placeholder || '';
+      c.reset();
+    },
+    reset: function() { c.value = ''; c.label = ''; input.value = ''; hide(); },
+    set: function(v) {
+      const it = c.items.find(function(x) { return String(x.value) === String(v); });
+      if (!it) return false;
+      c.value = String(it.value); c.label = it.label; input.value = it.label;
+      return true;
+    },
+  };
+  function hide() { drop.style.display = 'none'; }
+  function render(matches) {
+    if (!matches.length) {
+      drop.innerHTML = '<div class="ac-empty">Žádná shoda.</div>';
+      drop.style.display = 'block';
+      return;
+    }
+    drop.innerHTML = matches.map(function(it, i) {
+      return '<button type="button" class="ac-item" data-i="' + i + '"><span class="nm">' + esc(it.label) + '</span></button>';
+    }).join('');
+    drop.style.display = 'block';
+    [].forEach.call(drop.querySelectorAll('.ac-item'), function(btn) {
+      btn.addEventListener('mousedown', function(e) { e.preventDefault(); });
+      btn.addEventListener('click', function() { pick(matches[+btn.dataset.i]); });
+    });
+  }
+  function pick(it) {
+    if (!it) return;
+    c.value = String(it.value); c.label = it.label; input.value = it.label;
+    hide();
+    if (cfg.onPick) cfg.onPick(it);
+  }
+  function open(query) {
+    if (!c.items.length) { hide(); return; }
+    render(c.items.filter(function(it) { return matchName(it.label, query); }).slice(0, 40));
+  }
+  input.addEventListener('focus', function() { input.select(); open(''); });
+  input.addEventListener('input', function() { open(input.value); });
+  // Po opuštění pole bez výběru vrať text poslední vybrané položky.
+  input.addEventListener('blur', function() {
+    setTimeout(function() { hide(); input.value = c.label; }, 150);
+  });
+  return c;
+}
+
+let cSeason, cKraj, cSoutez;   // vytváří se v init (testy běží bez DOM)
+let _regions = [];
+
+async function loadCompetitions() {
+  const year = cSeason.value;
+  cKraj.disable('načítám…');
+  cSoutez.disable('— nejprve vyberte kraj —');
+  try {
+    _regions = parseCompetitions(await apiGet('/competitions/' + year, 'soutěže ' + year, true));
+    cKraj.setItems(_regions.map(function(r) { return { value: r.key, label: r.regionName }; }),
+      'Začněte psát kraj…');
+    syncCombosFromId();
+  } catch (e) {
+    cKraj.disable('nepodařilo se načíst');
+    setMsg('Soutěže ' + year + ': ' + esc(e.message), 'err');
+  }
+}
+
+function fillSoutez(reg) {
+  if (!reg) { cSoutez.disable('— nejprve vyberte kraj —'); return; }
+  cSoutez.setItems(reg.competitions.map(function(c) { return { value: String(c.compId), label: c.compName }; }),
+    '— vyberte soutěž —');
+}
+
+function onKrajPick(it) {
+  fillSoutez(_regions.find(function(r) { return r.key === String(it.value); }));
+}
+
+function onSoutezPick(it) {
+  document.getElementById('compId').value = it.value;
+  _lookupId = null;
+  updateFnamePreview();
+  lookupCompName();
+}
+
+/* ID soutěže → předvyber kraj a soutěž v combech (když patří do sezóny). */
+function syncCombosFromId() {
+  if (!cSoutez) return;
+  const compId = document.getElementById('compId').value.trim();
+  const reg = findRegionOf(_regions, compId);
+  if (reg) {
+    if (cKraj.value !== reg.key) { cKraj.set(reg.key); fillSoutez(reg); }
+    cSoutez.set(compId);
+  } else if (cSoutez.value && cSoutez.value !== compId) {
+    cSoutez.reset();
+  }
+}
+
 /* ── Historie posledních 5 generování (localStorage) ────────────
    Záznam = soutěž (ID + název) + šablona názvu souboru.
    Přežívá „Vymazat cache" (jiný klíč než sscr_*). */
@@ -900,12 +1197,15 @@ function applyHistory(i) {
   _fnameAuto = isLegacyTpl(rec.fname);   // reálná šablona = respektovat; starý default = přepsat návrhem
   _lookupId = null;                      // vynutit re-lookup i pro stejné compId
   updateFnamePreview();
+  syncCombosFromId();
   lookupCompName();
 }
 
 /* ── Inicializace ───────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', function() {
-  document.getElementById('compId').addEventListener('input', function() { scheduleLookup(); updateFnamePreview(); });
+  document.getElementById('compId').addEventListener('input', function() {
+    scheduleLookup(); updateFnamePreview(); syncCombosFromId();
+  });
   document.getElementById('kolo').addEventListener('input', updateFnamePreview);
   // Jakmile uživatel název ručně upraví, přestaneme ho přepisovat návrhem
   document.getElementById('fname').addEventListener('input', function() { _fnameAuto = false; updateFnamePreview(); });
@@ -927,6 +1227,23 @@ window.addEventListener('DOMContentLoaded', function() {
   renderHistory();
   updateFnamePreview();
   lookupCompName();
+
+  // Přepínač Rozhodčí — změna se hned promítne do náhledu (jména zůstávají ve stavu)
+  [].forEach.call(document.querySelectorAll('#refSeg button'), function(b) {
+    b.addEventListener('click', function() {
+      _withRef = b.dataset.v === '1';
+      [].forEach.call(document.querySelectorAll('#refSeg button'), function(x) { x.classList.toggle('on', x === b); });
+      renderPreview();
+    });
+  });
+
+  // Výběr soutěže přes menu
+  cSeason = createCombo('season', { onPick: loadCompetitions });
+  cKraj   = createCombo('kraj',   { onPick: onKrajPick });
+  cSoutez = createCombo('soutezSel', { onPick: onSoutezPick });
+  cSeason.setItems(seasonItems(), '— sezóna —');
+  cSeason.set(String(currentSeasonStart()));
+  loadCompetitions();
 });
 </script>
 </body>

@@ -7,20 +7,25 @@ dokument `.docx`.
 ## Použití
 
 Otevři https://zpravodaj.sachytynec.cz (nebo lokálně `public/index.html`).
-Vyplň:
+Práce má tři kroky:
 
-- **ID soutěže (compId)** a **číslo kola**
-- volitelně doplňující text do sekce *Různé*
-- **název souboru** — šablona s placeholdery `[soutez]` (= ID soutěže) a
-  `[kolo]` (= číslo kola), výchozí `[soutez]_[kolo]`
-
-Klikni na **Generovat** — zobrazí se náhled a tlačítko ke stažení DOCX.
+1. **Zadání** — soutěž vyber přes menu *Sezóna → Kraj → Soutěž* (s našeptáváním,
+   bez diakritiky), nebo zadej **ID soutěže** ručně (ručně zadané ID se v menu
+   dohledá). Doplň **číslo kola** a přepínač **Rozhodčí** (výchozí *Ano*).
+   Klikni na **Generovat**.
+2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
+   lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem
+   (řádek „Rozhodčí: …“ přes celou šířku tabulky) a text sekce *Různé*.
+   Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
+3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
+   DOCX** (sestaví se až teď, se všemi úpravami) nebo **Uložit jako PDF** (tisk).
 
 ## Vlastnosti
 
-- Data z API `https://api.chess.cz/api` (detaily, výsledky kola, tabulka pořadí).
+- Data z API `https://api.chess.cz/api` (seznam soutěží, detaily, výsledky kola,
+  tabulka pořadí).
 - **Šetrnost k API** (stejně jako sscr-soupiska): serializovaná fronta
-  s rozestupem ≥ 1,1 s, po `429`/síťové chybě se aplikace sama na 10 min
+  s rozestupem ≥ 300 ms, po `429`/síťové chybě se aplikace sama na 10 min
   zablokuje. Cache odpovědí v `localStorage` — výsledky kola a tabulka 10 min,
   ostatní 1 h; tlačítko *Vymazat cache*.
 - Výsledky: každý zápas jako samostatná tabulka, jména a ELO v oddělených
@@ -51,7 +56,8 @@ API chess.cz posílá `Access-Control-Allow-Origin: *`, takže frontend volá
 
 Generátor běží v prohlížeči (knihovna `docx` v7.8.2 z jsDelivr se SRI; v8.5
 má TDZ bug v UMD bundlu, na cdnjs docx není). Čisté funkce (`fmtHalf`,
-`abbrev`, `resolveFname`, `computeNameWidth`, `ttlFor`) i fronta `apiGet`
+`abbrev`, `resolveFname`, `computeNameWidth`, `ttlFor`, šířky sloupců
+`matchCols`/`standingsCols`, `refLine`, `parseCompetitions`) i fronta `apiGet`
 (rozestup, blokace po 429; s mockem `fetch`) jsou pokryté testy:
 
 ```
