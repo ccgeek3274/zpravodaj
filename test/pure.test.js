@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
-        matchCols, standingsCols, refLine, richBlocks, headerText, profileOf, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
@@ -243,4 +243,34 @@ test('profil Úřední — hlavička: název soutěže, pod ním kolo a ročník
   assert.ok(t[0].size > t[1].size);
   assert.equal(t[1].text, 'Zpravodaj z kola č. 2  ·  ročník 2025/2026');
   assert.equal(profileOf('uredni').title(Object.assign({}, d, { season: null }))[1].text, 'Zpravodaj z kola č. 2');
+});
+
+test('parseCzDate — DD.MM.YYYY, neplatné → null', () => {
+  assert.equal(parseCzDate('19.10.2025').getTime(), new Date(2025, 9, 19).getTime());
+  assert.equal(parseCzDate('1. 2. 2026').getTime(), new Date(2026, 1, 1).getTime());
+  assert.equal(parseCzDate(''), null);
+  assert.equal(parseCzDate(null), null);
+  assert.equal(parseCzDate('2025-10-19'), null);
+});
+
+test('parseSchedule — pole i jeden objekt, řazení podle kola', () => {
+  const r = parseSchedule([{ roundNr: 2, roundDate: '09.11.2025' }, { roundNr: 1, roundDate: '19.10.2025' }]);
+  assert.deepEqual(r.map(x => x.nr), [1, 2]);
+  assert.equal(parseSchedule({ roundNr: 1, roundDate: '' })[0].date, null);
+  assert.deepEqual(plain(parseSchedule(null)), []);
+});
+
+test('pickRound — poslední kolo s datem ≤ dnes, před sezónou 1. kolo', () => {
+  const rs = parseSchedule([
+    { roundNr: 1, roundDate: '19.10.2025' }, { roundNr: 2, roundDate: '09.11.2025' }, { roundNr: 3, roundDate: '23.11.2025' }]);
+  assert.equal(pickRound(rs, new Date(2025, 8, 1)), 1);            // před začátkem
+  assert.equal(pickRound(rs, new Date(2025, 9, 19, 8, 0)), 1);     // v den kola (ráno)
+  assert.equal(pickRound(rs, new Date(2025, 10, 20)), 2);          // mezi 2. a 3. kolem
+  assert.equal(pickRound(rs, new Date(2026, 5, 1)), 3);            // po skončení
+  assert.equal(pickRound([], new Date()), null);
+});
+
+test('roundLabel — číslo kola, den v týdnu a datum', () => {
+  assert.equal(roundLabel({ nr: 1, date: new Date(2025, 9, 19) }), '1. kolo  ·  ne 19. 10. 2025');
+  assert.equal(roundLabel({ nr: 4, date: null }), '4. kolo');
 });

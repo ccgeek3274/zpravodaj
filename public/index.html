@@ -58,15 +58,16 @@ body {
 
 .eyebrow { font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:0.06em;
   text-transform:uppercase; color:var(--muted); margin-bottom:7px; display:block; }
-input, textarea {
+input, textarea, select {
   width:100%; padding:11px 14px; font-family:var(--sans); font-size:14.5px; color:var(--ink);
   background:var(--field-bg); border:1px solid var(--field-bd); border-radius:var(--radius);
   transition:border-color .15s; }
-input { height:44px; padding:0 14px; }
+input, select { height:44px; padding:0 14px; }
+select:disabled { color:var(--muted-2); }
 input[type=number], #fname { font-family:var(--mono); }
 textarea { min-height:78px; resize:vertical; line-height:1.6; }
 input::placeholder, textarea::placeholder { color:var(--field-bd); }
-input:focus, textarea:focus { outline:none; border-color:var(--ink); }
+input:focus, textarea:focus, select:focus { outline:none; border-color:var(--ink); }
 .hint { display:block; margin-top:7px; font-size:12px; color:var(--muted-2); line-height:1.5;
   font-family:var(--sans); font-weight:400; letter-spacing:0; text-transform:none; }
 .hint code { font-family:var(--mono); font-size:11.5px; background:var(--highlight);
@@ -75,6 +76,7 @@ input:focus, textarea:focus { outline:none; border-color:var(--ink); }
 .field { margin-top:18px; }
 .field:first-child { margin-top:0; }
 .row { display:grid; grid-template-columns:1fr 160px; gap:14px; align-items:start; }
+.row.row-kolo { grid-template-columns:1fr 250px; }
 
 .fname-preview { font-family:var(--mono); font-weight:600; color:var(--ink);
   text-transform:none; letter-spacing:0; }
@@ -195,7 +197,7 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 
 @media (max-width:640px) {
   body { padding:32px 16px 60px; }
-  .row, .row-l { grid-template-columns:1fr; }
+  .row, .row.row-kolo, .row-l { grid-template-columns:1fr; }
   .preview-body { padding:8px; }
 }
 
@@ -255,15 +257,15 @@ input:disabled { opacity:.6; cursor:not-allowed; }
         <span class="hint">Vybraná soutěž vyplní ID níže. ID lze zadat i ručně.</span>
       </div>
 
-      <div class="field row">
+      <div class="field row row-kolo">
         <div>
           <label class="eyebrow" for="compId">ID soutěže</label>
-          <input type="number" id="compId" value="3317">
+          <input type="number" id="compId" placeholder="vyberte v menu výše">
           <div id="compNameView"></div>
         </div>
         <div>
           <label class="eyebrow" for="kolo">Číslo kola</label>
-          <input type="number" id="kolo" value="1">
+          <select id="kolo" disabled><option value="">— nejprve vyberte soutěž —</option></select>
         </div>
       </div>
 
@@ -1349,7 +1351,7 @@ async function generate() {
   const compId   = document.getElementById('compId').value.trim();
   const kolo     = document.getElementById('kolo').value.trim();
 
-  if (!compId || !kolo) { setMsg('Vyplňte ID soutěže a číslo kola.', 'err'); return; }
+  if (!compId || !kolo) { setMsg('Vyberte soutěž a kolo.', 'err'); return; }
 
   const btn = document.getElementById('btn-gen');
   btn.disabled = true;   // dvojklik by frontu zbytečně zdvojil
@@ -1505,12 +1507,69 @@ async function applySeason(d, compId) {
   maybeSuggestFname(d, yr);
 }
 
+/* ── Kola soutěže z /schedule (všechna kola s datem jedním dotazem) ── */
+/* „19.10.2025“ → Date (místní půlnoc), jinak null */
+function parseCzDate(s) {
+  const m = /^\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\s*$/.exec(s || '');
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+}
+/* Odpověď /schedule → [{ nr, date }] seřazené podle čísla kola */
+function parseSchedule(json) {
+  return norm(json).filter(function(r) { return r && r.roundNr != null; })
+    .map(function(r) { return { nr: +r.roundNr, date: parseCzDate(r.roundDate) }; })
+    .sort(function(a, b) { return a.nr - b.nr; });
+}
+/* Předvýběr: poslední odehrané kolo (datum ≤ dnes); před začátkem soutěže 1. kolo */
+function pickRound(rounds, today) {
+  if (!rounds.length) return null;
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let pick = rounds[0].nr;
+  rounds.forEach(function(r) { if (r.date && r.date <= t) pick = r.nr; });
+  return pick;
+}
+const CZ_DOW = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+function roundLabel(r) {
+  return r.nr + '. kolo' + (r.date
+    ? '  ·  ' + CZ_DOW[r.date.getDay()] + ' ' + r.date.getDate() + '. ' + (r.date.getMonth() + 1) + '. ' + r.date.getFullYear()
+    : '');
+}
+
+let _roundsSeq = 0;
+function setRoundOptions(opts, sel, placeholder) {
+  const el = document.getElementById('kolo');
+  el.innerHTML = opts.length
+    ? opts.map(function(o) { return '<option value="' + o.v + '">' + esc(o.t) + '</option>'; }).join('')
+    : '<option value="">' + esc(placeholder) + '</option>';
+  el.disabled = !opts.length;
+  if (sel != null) el.value = String(sel);
+  updateFnamePreview();
+}
+async function loadRounds(compId) {
+  const seq = ++_roundsSeq;
+  if (!compId) { setRoundOptions([], null, '— nejprve vyberte soutěž —'); return; }
+  setRoundOptions([], null, 'načítám kola…');
+  try {
+    const rounds = parseSchedule(await apiGet('/competitions/' + compId + '/schedule', null, true));
+    if (seq !== _roundsSeq) return;
+    if (!rounds.length) throw new Error('bez rozpisu');
+    setRoundOptions(rounds.map(function(r) { return { v: r.nr, t: roundLabel(r) }; }),
+                    pickRound(rounds, new Date()));
+  } catch (e) {
+    if (seq !== _roundsSeq) return;
+    // rozpis nedostupný → aspoň čísla kol bez data
+    const opts = [];
+    for (let i = 1; i <= 22; i++) opts.push({ v: i, t: i + '. kolo' });
+    setRoundOptions(opts, 1);
+  }
+}
+
 async function lookupCompName() {
   const view   = document.getElementById('compNameView');
   const compId = document.getElementById('compId').value.trim();
-  if (!compId)            { view.textContent = ''; _lookupId = null; return; }
+  if (!compId)            { view.textContent = ''; _lookupId = null; loadRounds(''); return; }
   if (compId === _lookupId) return;        // totéž ID už řešíme/máme → nevolat
   _lookupId = compId;
+  loadRounds(compId);                      // rozpis kol (fronta API, za detaily)
 
   const path = '/competitions/' + compId + '/details';
   const cached = getCached(path);
@@ -1747,11 +1806,10 @@ window.addEventListener('DOMContentLoaded', function() {
   document.getElementById('compId').addEventListener('input', function() {
     scheduleLookup(); updateFnamePreview(); syncCombosFromId();
   });
-  document.getElementById('kolo').addEventListener('input', updateFnamePreview);
+  document.getElementById('kolo').addEventListener('change', updateFnamePreview);
   // Jakmile uživatel název ručně upraví, přestaneme ho přepisovat návrhem
   document.getElementById('fname').addEventListener('input', function() { _fnameAuto = false; updateFnamePreview(); });
 
-  // Poslední záznam předvyplní soutěž + šablonu názvu
   // Vyčisti staré „legacy" záznamy ([soutez]_[kolo]) z dřívějšího testování
   let h = loadHistory();
   const cleaned = h.filter(function(x) { return !isLegacyTpl(x.fname); });
@@ -1760,11 +1818,7 @@ window.addEventListener('DOMContentLoaded', function() {
     h = cleaned;
   }
 
-  if (h.length) {
-    document.getElementById('compId').value = h[0].compId;
-    document.getElementById('fname').value  = h[0].fname;
-    _fnameAuto = isLegacyTpl(h[0].fname);   // (reálná šablona ⇒ respektovat)
-  }
+  // Nic se nepředvybírá — jen aktuální ročník v menu; historie zůstává jako rychlá volba
   renderHistory();
   updateFnamePreview();
   lookupCompName();

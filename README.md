@@ -9,9 +9,14 @@ dokument `.docx`.
 Otevři https://zpravodaj.sachytynec.cz (nebo lokálně `public/index.html`).
 Práce má tři kroky:
 
-1. **Zadání** — soutěž vyber přes menu *Sezóna → Kraj → Soutěž* (s našeptáváním,
-   bez diakritiky), nebo zadej **ID soutěže** ručně (ručně zadané ID se v menu
-   dohledá). Doplň **číslo kola** a přepínač **Rozhodčí** (výchozí *Ano*).
+1. **Zadání** — po otevření není nic předvybrané, jen aktuální ročník
+   (od září nový). Soutěž vyber přes menu *Sezóna → Kraj → Soutěž*
+   (s našeptáváním, bez diakritiky), nebo zadej **ID soutěže** ručně (ručně
+   zadané ID se v menu dohledá); historie nahoře slouží jako rychlá volba.
+   **Kolo** se vybírá ze seznamu s datem (např. *3. kolo · ne 23. 11. 2025*,
+   z rozpisu `/schedule`) a předvybere se poslední odehrané kolo podle
+   dnešního data (před začátkem soutěže 1. kolo). Pak přepínač **Rozhodčí**
+   (výchozí *Ano*).
    Klikni na **Generovat**.
 2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem
@@ -37,8 +42,8 @@ Práce má tři kroky:
 
 ## Vlastnosti
 
-- Data z API `https://api.chess.cz/api` (seznam soutěží, detaily, výsledky kola,
-  tabulka pořadí).
+- Data z API `https://api.chess.cz/api` (seznam soutěží, detaily, rozpis kol,
+  výsledky kola, tabulka pořadí).
 - **Šetrnost k API** (stejně jako sscr-soupiska): serializovaná fronta
   s rozestupem ≥ 300 ms, po `429`/síťové chybě se aplikace sama na 10 min
   zablokuje. Cache odpovědí v `localStorage` — výsledky kola a tabulka 10 min,
@@ -74,7 +79,8 @@ API chess.cz posílá `Access-Control-Allow-Origin: *`, takže frontend volá
 Generátor běží v prohlížeči (knihovna `docx` v7.8.2 z jsDelivr se SRI; v8.5
 má TDZ bug v UMD bundlu, na cdnjs docx není). Čisté funkce (`fmtHalf`,
 `abbrev`, `resolveFname`, `computeNameWidth`, `ttlFor`, šířky sloupců
-`matchCols`/`standingsCols`, `refLine`, `parseCompetitions`) i fronta `apiGet`
+`matchCols`/`standingsCols`, `refLine`, `parseCompetitions`, rozpis kol
+`parseSchedule`/`pickRound`/`roundLabel`, profily `profileOf`) i fronta `apiGet`
 (rozestup, blokace po 429; s mockem `fetch`) jsou pokryté testy:
 
 ```
