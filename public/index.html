@@ -99,6 +99,7 @@ button:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
 
 #msg, .msg2 { margin-top:14px; font-size:13px; min-height:18px; font-family:var(--mono); color:var(--muted); }
 .ok  { color:var(--ok); }
+.warn { color:oklch(0.52 0.12 70); }
 .err { color:var(--err); }
 .note { margin-top:12px; padding:12px 14px; font-family:var(--sans); font-size:12.5px; color:var(--muted);
   line-height:1.5; background:var(--field-bg); border:1px solid var(--divider); border-radius:var(--radius); }
@@ -465,11 +466,14 @@ function apiGet(path, label, quiet, force) {
       _blockUntil = Date.now() + BLOCK_MS;
       throw new Error('Rate-limit (429) — pauza 10 min.');
     }
-    if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + label);
+    if (!r.ok) {
+      // kolo bez výsledků: /matches vrací 404 {"error":"No matches found…"};
+      // chyby se necachují, takže se po zadání výsledků hned načtou
+      const err = new Error('HTTP ' + r.status + ' — ' + label);
+      err.status = r.status;
+      throw err;
+    }
     const data = await r.json();
-    // TODO(nová sezóna): až bude jasné, jak vypadá odpověď „kolo ještě nemá
-    // výsledky", přidat sem pro /matches podmínku `if (!isEmpty(data)) setCache(...)`,
-    // ať se prázdné kolo neuloží ani na 10 min. Do té doby to kryje krátký TTL.
     setCache(path, data);
     return data;
   };
@@ -986,6 +990,7 @@ function previewHtml(d, withRef, rozne, profKey, fpt) {
   const lay = matchLayout(d.matchList, d.kolo, fpt), sl = standingsLayout(d.teamList, fpt);
   const tfs = 'font-size:' + ptPx(fpt);
   let h = '';
+  if (d.noResults) h += '<div class="fit-warn">⚠ ' + esc(noResultsText(d)) + '</div>';
   if (!lay.fits || !sl.fits)
     h += '<div class="fit-warn">⚠ Při písmu ' + fpt + ' pt se nejdelší '
        + (!lay.fits ? 'jméno nebo název družstva ve výsledcích' : 'název družstva v pořadí')
@@ -1408,6 +1413,13 @@ async function downloadPdf() {
 }
 
 /* ── Generování: načtení dat + náhled ───────────────────────────── */
+function noResultsText(d) {
+  const dt = d.noResults && d.noResults.date;
+  return 'Kolo ' + d.kolo + ' zatím nemá výsledky'
+       + (dt ? ' (hraje se ' + dayCz(dt) + ')' : '')
+       + ' — náhled ukazuje jen dvojice zápasů podle rozpisu.';
+}
+
 async function generate() {
   const compId   = document.getElementById('compId').value.trim();
   const kolo     = document.getElementById('kolo').value.trim();
@@ -1423,7 +1435,17 @@ async function generate() {
     // ať pořadí neviselo na starší (byť ještě platné) cache verzi.
     const matchesPath = '/competitions/' + compId + '/round/' + kolo + '/matches';
     const matchesFromCache = getCached(matchesPath) !== null;
-    const matches   = await apiGet(matchesPath, 'výsledky');
+    let matches, noResults = null;
+    try {
+      matches = await apiGet(matchesPath, 'výsledky');
+    } catch (e) {
+      if (e.status !== 404) throw e;
+      // kolo ještě nemá výsledky → aspoň dvojice družstev z rozpisu
+      const sr = scheduleRound(await apiGet('/competitions/' + compId + '/schedule', 'rozpis kol'), kolo);
+      if (!sr || !sr.matches.length) throw new Error('Kolo ' + kolo + ' nemá výsledky ani rozpis zápasů.');
+      matches = sr.matches;
+      noResults = { date: sr.date };
+    }
     const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí', false, !matchesFromCache);
 
     const matchList = norm(matches);
@@ -1442,6 +1464,7 @@ async function generate() {
       matchList:  matchList,
       teamList:   norm(standings),
       refs:       keepRefs ? _doc.refs : matchList.map(function() { return ''; }),
+      noResults:  noResults,
     };
     // Různé obsahuje jméno vedoucího a datum → pro jinou soutěž/kolo výchozí text
     if (!keepRefs || !_rozne) _rozne = defaultRozne(_doc);
@@ -1451,7 +1474,8 @@ async function generate() {
     document.getElementById('sec-download').classList.remove('hidden');
     setMsg('', null, 'dlMsg');
     updateFnamePreview();
-    setMsg('✓ Hotovo — v náhledu doplňte rozhodčí a sekci Různé, stažení je na konci.', 'ok');
+    if (noResults) setMsg('⚠ ' + esc(noResultsText(_doc)), 'warn');
+    else setMsg('✓ Hotovo — v náhledu doplňte rozhodčí a sekci Různé, stažení je na konci.', 'ok');
     loadPdfMake().catch(function() {});   // na pozadí, ať je „Stáhnout PDF“ hned
     document.getElementById('sec-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
@@ -1567,6 +1591,20 @@ async function applySeason(d, compId) {
   maybeSuggestFname(d, yr);
 }
 
+/* Zápasy kola z rozpisu (/schedule) — pro kolo, které ještě nemá výsledky:
+   jen dvojice družstev, bez skóre a partií. null = kolo v rozpisu není. */
+function scheduleRound(json, kolo) {
+  const r = norm(json).filter(function(x) { return x && String(x.roundNr) === String(kolo); })[0];
+  if (!r) return null;
+  return {
+    date: parseCzDate(r.roundDate),
+    matches: norm(r.roundMatches).map(function(m) {
+      return { homeTeamName: m.homeTeamName || '', awayTeamName: m.awayTeamName || '',
+               homeTeamScore: null, awayTeamScore: null, matchGames: [] };
+    }),
+  };
+}
+
 /* ── Kola soutěže z /schedule (všechna kola s datem jedním dotazem) ── */
 /* „19.10.2025“ → Date (místní půlnoc), jinak null */
 function parseCzDate(s) {
@@ -1588,10 +1626,12 @@ function pickRound(rounds, today) {
   return pick;
 }
 const CZ_DOW = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+/* Date → „ne 19. 10. 2025“ */
+function dayCz(dt) {
+  return CZ_DOW[dt.getDay()] + ' ' + dt.getDate() + '. ' + (dt.getMonth() + 1) + '. ' + dt.getFullYear();
+}
 function roundLabel(r) {
-  return r.nr + '. kolo' + (r.date
-    ? '  ·  ' + CZ_DOW[r.date.getDay()] + ' ' + r.date.getDate() + '. ' + (r.date.getMonth() + 1) + '. ' + r.date.getFullYear()
-    : '');
+  return r.nr + '. kolo' + (r.date ? '  ·  ' + dayCz(r.date) : '');
 }
 
 let _roundsSeq = 0;

@@ -16,7 +16,8 @@ Práce má tři kroky:
    **Kolo** se vybírá ze seznamu s datem (např. *3. kolo · ne 23. 11. 2025*,
    z rozpisu `/schedule`) a předvybere se poslední odehrané kolo podle
    dnešního data (před začátkem soutěže 1. kolo). Pak přepínač **Rozhodčí**
-   (výchozí *Ano*).
+   (výchozí *Ano*). Kolo, které ještě nemá výsledky (API vrací 404), se
+   vygeneruje taky — s varováním a jen s dvojicemi družstev z rozpisu.
    Klikni na **Generovat**.
 2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem

@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, matchLayout, ttlFor,
-        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, scheduleRound, noResultsText, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 const sum = a => a.reduce((x, y) => x + y, 0);
 
@@ -290,4 +290,19 @@ test('pickRound — poslední kolo s datem ≤ dnes, před sezónou 1. kolo', ()
 test('roundLabel — číslo kola, den v týdnu a datum', () => {
   assert.equal(roundLabel({ nr: 1, date: new Date(2025, 9, 19) }), '1. kolo  ·  ne 19. 10. 2025');
   assert.equal(roundLabel({ nr: 4, date: null }), '4. kolo');
+});
+
+test('scheduleRound — dvojice družstev z rozpisu bez skóre, neexistující kolo → null', () => {
+  const json = [
+    { roundNr: 1, roundDate: '31.10.2026', roundMatches: [
+      { homeTeamName: 'Stelar OAZA Praha', awayTeamName: '1. Novoborský ŠK', homeTeamScore: null, awayTeamScore: null }] },
+    { roundNr: 2, roundDate: '01.11.2026', roundMatches: { homeTeamName: 'A', awayTeamName: 'B' } }];
+  const r1 = scheduleRound(json, '1');
+  assert.equal(r1.date.getTime(), new Date(2026, 9, 31).getTime());
+  assert.deepEqual(plain(r1.matches), [{ homeTeamName: 'Stelar OAZA Praha', awayTeamName: '1. Novoborský ŠK',
+    homeTeamScore: null, awayTeamScore: null, matchGames: [] }]);
+  assert.equal(scheduleRound(json, 2).matches.length, 1);   // jeden zápas jako objekt
+  assert.equal(scheduleRound(json, '3'), null);
+  assert.equal(noResultsText({ kolo: '1', noResults: { date: r1.date } }),
+    'Kolo 1 zatím nemá výsledky (hraje se so 31. 10. 2026) — náhled ukazuje jen dvojice zápasů podle rozpisu.');
 });
