@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, matchLayout, ttlFor,
-        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, scheduleRound, noResultsText, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, scheduleRound, noResultsText, mergeRound, eloCell, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 const sum = a => a.reduce((x, y) => x + y, 0);
 
@@ -305,4 +305,48 @@ test('scheduleRound — dvojice družstev z rozpisu bez skóre, neexistující k
   assert.equal(scheduleRound(json, '3'), null);
   assert.equal(noResultsText({ kolo: '1', noResults: { date: r1.date } }),
     'Kolo 1 zatím nemá výsledky (hraje se so 31. 10. 2026) — náhled ukazuje jen dvojice zápasů podle rozpisu.');
+});
+
+test('mergeRound — pořadí podle rozpisu, chybějící zápas jako dvojice bez skóre', () => {
+  const plan = [
+    { homeTeamId: 1, awayTeamId: 2, homeTeamName: 'A', awayTeamName: 'B', homeTeamScore: null, awayTeamScore: null, matchGames: [] },
+    { homeTeamId: 3, awayTeamId: 4, homeTeamName: 'C', awayTeamName: 'D', homeTeamScore: null, awayTeamScore: null, matchGames: [] },
+    { homeTeamId: 5, awayTeamId: 6, homeTeamName: 'E', awayTeamName: 'F', homeTeamScore: null, awayTeamScore: null, matchGames: [] }];
+  const res = [
+    { homeTeamId: 5, awayTeamId: 6, homeTeamName: 'E', awayTeamName: 'F', homeTeamScore: 3, awayTeamScore: 1, matchGames: [{}] },
+    { homeTeamId: 1, awayTeamId: 2, homeTeamName: 'A', awayTeamName: 'B', homeTeamScore: 2, awayTeamScore: 2, matchGames: [{}] }];
+  const m = mergeRound(res, plan);
+  assert.deepEqual(plain(m.matches).map(x => x.homeTeamName + x.homeTeamScore), ['A2', 'Cnull', 'E3']);
+  assert.deepEqual(plain(m.missing), ['C – D']);
+  // vše zadané → nic nechybí; bez rozpisu → výsledky beze změny
+  assert.deepEqual(plain(mergeRound(res.concat([{ ...plan[1], homeTeamScore: 1, awayTeamScore: 3 }]), plan).missing), []);
+  assert.equal(mergeRound(res, null).matches.length, 2);
+  // ve výsledcích bez skóre: nezadaný → hlásí se; Volno/kontumace (gameForfeited) → ne
+  const noScore = { homeTeamId: 3, awayTeamId: 4, homeTeamName: 'C', awayTeamName: 'D', homeTeamScore: null, awayTeamScore: null,
+                    matchGames: [{ homePlayerResult: null, awayPlayerResult: null }] };
+  assert.deepEqual(plain(mergeRound(res.concat([noScore]), plan).missing), ['C – D']);
+  const volno = { ...noScore, homeTeamName: 'Volno', matchGames: [{ homePlayerResult: 0, awayPlayerResult: 0, gameForfeited: 1 }] };
+  assert.deepEqual(plain(mergeRound(res.concat([volno]), plan).missing), []);
+  // párování podle názvu, když výsledky nemají ID; zápas mimo rozpis se nezahodí
+  const byName = mergeRound([{ homeTeamName: 'Č', awayTeamName: 'D', homeTeamScore: 1, awayTeamScore: 0 },
+                             { homeTeamName: 'X', awayTeamName: 'Y', homeTeamScore: 1, awayTeamScore: 0 }],
+                            [{ homeTeamId: 3, awayTeamId: 4, homeTeamName: 'C', awayTeamName: 'D' },
+                             { homeTeamId: 7, awayTeamId: 8, homeTeamName: 'Č', awayTeamName: 'D' }]);
+  assert.deepEqual(plain(byName.matches).map(x => x.homeTeamName + x.homeTeamScore), ['Cundefined', 'Č1', 'X1']);
+  assert.equal(byName.matches.length, 3);   // „C“ ≠ „Č“, nic nezmizí
+  // kolo bez výsledků → všechno chybí
+  assert.equal(mergeRound([], plan).missing.length, 3);
+});
+
+test('noResultsText — částečné kolo vyjmenuje chybějící zápasy', () => {
+  assert.equal(noResultsText({ kolo: '8', noResults: { partial: true, total: 5, missing: ['nezúčastní se – ŠK Loko Praha C'] } }),
+    'Výsledky jsou jen u 4 z 5 zápasů kola 8. Bez výsledku (zatím nezadaný, nebo nehraný): nezúčastní se – ŠK Loko Praha C.');
+});
+
+test('eloCell — neobsazená šachovnice prázdná, neregistrovaný hráč 0', () => {
+  assert.equal(eloCell(null, null), '');
+  assert.equal(eloCell('', null), '');
+  assert.equal(eloCell('Novák Jan', null), '0');
+  assert.equal(eloCell('Novák Jan', 0), '0');
+  assert.equal(eloCell('Novák Jan', 1830), '1830');
 });

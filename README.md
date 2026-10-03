@@ -16,8 +16,12 @@ Práce má tři kroky:
    **Kolo** se vybírá ze seznamu s datem (např. *3. kolo · ne 23. 11. 2025*,
    z rozpisu `/schedule`) a předvybere se poslední odehrané kolo podle
    dnešního data (před začátkem soutěže 1. kolo). Pak přepínač **Rozhodčí**
-   (výchozí *Ano*). Kolo, které ještě nemá výsledky (API vrací 404), se
-   vygeneruje taky — s varováním a jen s dvojicemi družstev z rozpisu.
+   (výchozí *Ano*). Výsledky se párují s rozpisem kola (podle ID družstev),
+   čísla zápasů jdou podle rozpisu. Kolo, které ještě nemá výsledky (API
+   vrací 404), se vygeneruje taky — jen s dvojicemi družstev. Když chybí
+   výsledky jen některých zápasů (nezadané nebo nenastoupené družstvo),
+   jsou v náhledu bez skóre a varování je vyjmenuje. Volno a kontumace
+   (`gameForfeited`) se nehlásí; u neobsazené šachovnice se nepíše ELO 0.
    Klikni na **Generovat**.
 2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem

@@ -508,6 +508,8 @@ function fmtResult(h, a) {
   return '';
 }
 function eloStr(v) { return (v != null && v !== '') ? String(v) : '0'; }
+/* ELO do tabulky: neobsazená šachovnice (bez hráče, např. Volno) = prázdné */
+function eloCell(name, v) { return (name == null || name === '') && (v == null || v === '') ? '' : eloStr(v); }
 function fmtDateCz(s) {
   if (!s) return '';
   const [d, m, y] = s.split('.');
@@ -568,7 +570,7 @@ function matchLayout(matchList, kolo, fpt) {
     scores.push(fmtScore(m.homeTeamScore, m.awayTeamScore));
     teams.push(m.homeTeamName || '', m.awayTeamName || '');
     norm(m.matchGames).forEach(function(g) {
-      elos.push(eloStr(g.homePlayerRating), eloStr(g.awayPlayerRating));
+      elos.push(eloCell(g.homePlayerName, g.homePlayerRating), eloCell(g.awayPlayerName, g.awayPlayerRating));
       res.push(fmtResult(g.homePlayerResult, g.awayPlayerResult));
       players.push(g.homePlayerName || '', g.awayPlayerName || '');
     });
@@ -731,9 +733,9 @@ function buildMatchTable(match, matchNr, lay, refName, fpt) {
     rows.push(new docx.TableRow({ cantSplit: true, children: [
       cell(idx + 1,                       { w: lay.board,  fs: fs, align: 'center', keepNext: kn }),
       cell(game.homePlayerName || '',     { w: nameW,      fs: fs, align: 'left',   keepNext: kn }),
-      cell(eloStr(game.homePlayerRating), { w: lay.elo,    fs: fs, align: 'right',  keepNext: kn }),
+      cell(eloCell(game.homePlayerName, game.homePlayerRating), { w: lay.elo,    fs: fs, align: 'right',  keepNext: kn }),
       cell(fmtResult(game.homePlayerResult, game.awayPlayerResult), { w: lay.result, fs: fs, align: 'center', keepNext: kn }),
-      cell(eloStr(game.awayPlayerRating), { w: lay.elo,    fs: fs, align: 'left',   keepNext: kn }),
+      cell(eloCell(game.awayPlayerName, game.awayPlayerRating), { w: lay.elo,    fs: fs, align: 'left',   keepNext: kn }),
       cell(game.awayPlayerName || '',     { w: nameW,      fs: fs, align: 'left',   keepNext: kn }),
     ]}));
   });
@@ -1026,9 +1028,9 @@ function previewHtml(d, withRef, rozne, profKey, fpt) {
       h += '<tr>'
          + '<td class="c">' + (idx + 1) + '</td>'
          + '<td>' + esc(g.homePlayerName || '') + '</td>'
-         + '<td class="r">' + esc(eloStr(g.homePlayerRating)) + '</td>'
+         + '<td class="r">' + esc(eloCell(g.homePlayerName, g.homePlayerRating)) + '</td>'
          + '<td class="c">' + esc(fmtResult(g.homePlayerResult, g.awayPlayerResult)) + '</td>'
-         + '<td>' + esc(eloStr(g.awayPlayerRating)) + '</td>'
+         + '<td>' + esc(eloCell(g.awayPlayerName, g.awayPlayerRating)) + '</td>'
          + '<td>' + esc(g.awayPlayerName || '') + '</td>'
          + '</tr>';
     });
@@ -1337,9 +1339,9 @@ function buildPdfDef(d, withRef, blocks, profKey, fpt) {
       body.push([
         { text: String(idx + 1), alignment: 'center' },
         { text: g.homePlayerName || '' },
-        { text: eloStr(g.homePlayerRating), alignment: 'right' },
+        { text: eloCell(g.homePlayerName, g.homePlayerRating), alignment: 'right' },
         { text: fmtResult(g.homePlayerResult, g.awayPlayerResult), alignment: 'center' },
-        { text: eloStr(g.awayPlayerRating) },
+        { text: eloCell(g.awayPlayerName, g.awayPlayerRating) },
         { text: g.awayPlayerName || '' },
       ]);
     });
@@ -1414,7 +1416,11 @@ async function downloadPdf() {
 
 /* ── Generování: načtení dat + náhled ───────────────────────────── */
 function noResultsText(d) {
-  const dt = d.noResults && d.noResults.date;
+  const nr = d.noResults || {};
+  if (nr.partial)
+    return 'Výsledky jsou jen u ' + (nr.total - nr.missing.length) + ' z ' + nr.total + ' zápasů kola ' + d.kolo
+         + '. Bez výsledku (zatím nezadaný, nebo nehraný): ' + nr.missing.join('; ') + '.';
+  const dt = nr.date;
   return 'Kolo ' + d.kolo + ' zatím nemá výsledky'
        + (dt ? ' (hraje se ' + dayCz(dt) + ')' : '')
        + ' — náhled ukazuje jen dvojice zápasů podle rozpisu.';
@@ -1435,17 +1441,26 @@ async function generate() {
     // ať pořadí neviselo na starší (byť ještě platné) cache verzi.
     const matchesPath = '/competitions/' + compId + '/round/' + kolo + '/matches';
     const matchesFromCache = getCached(matchesPath) !== null;
-    let matches, noResults = null;
+    // Kolo bez výsledků: /matches vrací 404 → prázdné výsledky
+    let results = [];
     try {
-      matches = await apiGet(matchesPath, 'výsledky');
+      results = norm(await apiGet(matchesPath, 'výsledky'));
     } catch (e) {
       if (e.status !== 404) throw e;
-      // kolo ještě nemá výsledky → aspoň dvojice družstev z rozpisu
-      const sr = scheduleRound(await apiGet('/competitions/' + compId + '/schedule', 'rozpis kol'), kolo);
-      if (!sr || !sr.matches.length) throw new Error('Kolo ' + kolo + ' nemá výsledky ani rozpis zápasů.');
-      matches = sr.matches;
-      noResults = { date: sr.date };
     }
+    // Rozpis kola (obvykle už v cache z výběru kola) doplní zápasy bez výsledku
+    let sr = null;
+    try {
+      sr = scheduleRound(await apiGet('/competitions/' + compId + '/schedule', 'rozpis kol'), kolo);
+    } catch (e) {
+      if (!results.length) throw e;      // bez výsledků i rozpisu není co ukázat
+    }
+    const mg = mergeRound(results, sr && sr.matches);
+    if (!mg.matches.length) throw new Error('Kolo ' + kolo + ' nemá výsledky ani rozpis zápasů.');
+    const matches = mg.matches;
+    const noResults = !results.length ? { date: sr && sr.date }
+                    : mg.missing.length ? { partial: true, missing: mg.missing, total: matches.length }
+                    : null;
     const standings = await apiGet('/competitions/' + compId + '/table', 'pořadí', false, !matchesFromCache);
 
     const matchList = norm(matches);
@@ -1599,10 +1614,43 @@ function scheduleRound(json, kolo) {
   return {
     date: parseCzDate(r.roundDate),
     matches: norm(r.roundMatches).map(function(m) {
-      return { homeTeamName: m.homeTeamName || '', awayTeamName: m.awayTeamName || '',
+      return { homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId,
+               homeTeamName: m.homeTeamName || '', awayTeamName: m.awayTeamName || '',
                homeTeamScore: null, awayTeamScore: null, matchGames: [] };
     }),
   };
+}
+
+/* Výsledky kola (/matches) spárované s rozpisem (/schedule) podle ID družstev
+   (záložně podle názvů). Pořadí a čísla zápasů podle rozpisu; zápas, který ve
+   výsledcích chybí (ještě nezadaný, nebo nenastoupené družstvo), zůstane jako
+   dvojice bez skóre a je v `missing`; stejně tak zápas, který ve výsledcích je,
+   ale bez skóre a bez kontumací (Volno a kontumace mají gameForfeited a skóre
+   null trvale — ty se nehlásí). Bez rozpisu = výsledky beze změny. */
+function isUnentered(m) {
+  return m.homeTeamScore == null && m.awayTeamScore == null
+      && !norm(m.matchGames).some(function(g) { return g && +g.gameForfeited === 1; });
+}
+function mergeRound(results, planned) {
+  results = norm(results);
+  if (!planned || !planned.length) planned = [];
+  // názvy se porovnávají přesně (jen bez ohledu na velikost a krajní mezery) — „C“ ≠ „Č“
+  function nkey(m) { return 'n:' + String(m.homeTeamName || '').trim().toLowerCase() + '/' + String(m.awayTeamName || '').trim().toLowerCase(); }
+  function key(m) {
+    return (m.homeTeamId != null && m.awayTeamId != null) ? 'id:' + m.homeTeamId + '/' + m.awayTeamId : nkey(m);
+  }
+  const byKey = {}, used = {};
+  results.forEach(function(m, i) { byKey[key(m)] = i; byKey[nkey(m)] = i; });
+  const out = [], missing = [];
+  planned.forEach(function(p) {
+    let i = byKey[key(p)];
+    if (i == null) i = byKey[nkey(p)];
+    if (i != null && !used[i]) { used[i] = true; out.push(results[i]); }
+    else out.push(p);
+  });
+  results.forEach(function(m, i) { if (!used[i]) out.push(m); });   // pojistka: zápas mimo rozpis
+  out.forEach(function(m) { if (isUnentered(m)) missing.push(m.homeTeamName + ' – ' + m.awayTeamName); });
+  return { matches: out, missing: missing };
 }
 
 /* ── Kola soutěže z /schedule (všechna kola s datem jedním dotazem) ── */
