@@ -235,3 +235,12 @@ test('profileOf — Klasický = původní vzhled, neznámý klíč → Klasický
   assert.equal(profileOf('uredni').chap(d).labels[0], 'I. VÝSLEDKY 2. KOLA');
   assert.equal(profileOf('moderni').title(d)[0].text, '2. kolo');
 });
+
+test('profil Úřední — hlavička: název soutěže, pod ním kolo a ročník', () => {
+  const d = { kolo: '2', season: 2025, compName: 'Krajský přebor', regionName: 'JmKŠS' };
+  const t = profileOf('uredni').title(d);
+  assert.equal(t[0].text, 'Krajský přebor');
+  assert.ok(t[0].size > t[1].size);
+  assert.equal(t[1].text, 'Zpravodaj z kola č. 2  ·  ročník 2025/2026');
+  assert.equal(profileOf('uredni').title(Object.assign({}, d, { season: null }))[1].text, 'Zpravodaj z kola č. 2');
+});

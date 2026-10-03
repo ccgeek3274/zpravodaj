@@ -578,9 +578,11 @@ const PROFILES = {
                r: seasonText(d) ? 'Ročník ' + seasonText(d) : '', size: 9, rule: '000000' };
     },
     title: function(d) {
+      // dominantní je název soutěže, pod ním číslo zpravodaje a ročník
       return [
-        { text: 'ZPRAVODAJ Č. ' + d.kolo, size: 14, bold: true, align: 'center', after: 2 },
-        { text: d.compName, size: 11, align: 'center', after: 8 },
+        { text: d.compName, size: 18, bold: true, align: 'center', after: 3 },
+        { text: ['Zpravodaj z kola č. ' + d.kolo, seasonText(d) ? 'ročník ' + seasonText(d) : '']
+                  .filter(Boolean).join('  ·  '), size: 11, align: 'center', after: 10 },
       ];
     },
     chap:  function(d) {

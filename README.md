@@ -25,7 +25,8 @@ Práce má tři kroky:
    které se liší záhlavím stránky, hlavičkou a nadpisy kapitol:
    - *Klasický* — záhlaví vpravo, „Zpravodaj z kola č. N“, „1. Výsledky“ …
    - *Úřední* — záhlaví kraj – soutěž vlevo / ročník vpravo s linkou,
-     „ZPRAVODAJ Č. N“ + název soutěže, kapitoly „I. VÝSLEDKY N. KOLA“ … podtržené
+     dominantní název soutěže (18 pt) + „Zpravodaj z kola č. N · ročník …“,
+     kapitoly „I. VÝSLEDKY N. KOLA“ … podtržené
    - *Moderní* — šedé záhlaví uprostřed, modré „N. kolo“ + soutěž s linkou,
      modré kapitoly „Výsledky“, „Průběžné pořadí“, „Informace řídícího soutěže“
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
