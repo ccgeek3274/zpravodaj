@@ -34,6 +34,9 @@
 }
 * { box-sizing:border-box; }
 html, body { margin:0; padding:0; }
+/* iOS Safari jinak „autosizingem“ zvětšuje text v širokém náhledu (794 px) —
+   např. popisek „Rozhodčí:“ v buňce, ale ne jméno v inline-blocku */
+html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 body {
   font-family:var(--sans); background:var(--screen); color:var(--ink);
   padding:52px 24px 80px; line-height:1.5;
