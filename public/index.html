@@ -150,9 +150,12 @@ input:disabled { opacity:.6; cursor:not-allowed; }
   padding:26px 96px 96px; border:1px solid var(--divider);
 }
 /* záhlaví 9 pt na jednom řádku; 0,7 cm od kraje, sazba od 1,4 cm */
-.doc-hdr { text-align:right; font-size:12px; line-height:1.15; white-space:nowrap; overflow:hidden;
-  text-overflow:ellipsis; min-height:14px; margin-bottom:13px; }
-.doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; }
+.doc-hdr { display:flex; justify-content:space-between; gap:12px; font-size:12px; line-height:1.15;
+  white-space:nowrap; min-height:14px; margin-bottom:13px; }
+.doc-hdr span { overflow:hidden; text-overflow:ellipsis; }
+.doc-hdr span:first-child:empty { flex:1; }
+.doc-hdr .c { flex:1; text-align:center; }
+.doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; line-height:1.15; }
 .doc .d-h { font-size:13.33px; font-weight:bold; margin:13.33px 0 5.33px; }
 .doc .d-h.first { margin-top:4px; }
 .doc .d-p { margin:0 0 6.67px; }
@@ -271,6 +274,16 @@ input:disabled { opacity:.6; cursor:not-allowed; }
           <button type="button" data-v="0">Ne</button>
         </div>
         <span class="hint">Pod každý zápas přidá řádek „Rozhodčí: …“ — jméno doplníte v náhledu.</span>
+      </div>
+
+      <div class="field">
+        <span class="eyebrow">Vzhled</span>
+        <div class="seg" id="profSeg">
+          <button type="button" data-v="klasik" class="on">Klasický</button>
+          <button type="button" data-v="uredni">Úřední</button>
+          <button type="button" data-v="moderni">Moderní</button>
+        </div>
+        <span class="hint">Záhlaví stránky, hlavička a nadpisy kapitol. Lze přepnout i po vygenerování.</span>
       </div>
 
       <div class="actions">
@@ -538,9 +551,62 @@ function sum(arr) { return arr.reduce(function(a, b) { return a + b; }, 0); }
 
 /* Záhlaví stránky: „Kraj - Soutěž - Ročník“ (ročník jen když je sezóna známá). */
 function headerText(d) {
-  const season = d.season != null ? d.season + '/' + (+d.season + 1) : '';
-  return [d.regionName, d.compName, season].filter(Boolean).join(' - ');
+  return [d.regionName, d.compName, seasonText(d)].filter(Boolean).join(' - ');
 }
+
+function seasonText(d) { return d.season != null ? d.season + '/' + (+d.season + 1) : ''; }
+
+/* ── Formátovací profily ─────────────────────────────────────────
+   Liší se jen záhlavím stránky (hdr), hlavičkou dokumentu (title)
+   a nadpisy kapitol (chap); tabulky a sekce Různé jsou společné.
+   hdr:   { l, c, r } texty záhlaví (vlevo/uprostřed/vpravo), size pt,
+          color, rule = barva linky pod záhlavím (nebo null)
+   title: řádky hlavičky { text, size pt, bold, color, align, after pt },
+          titleRule = barva linky pod hlavičkou
+   chap:  nadpisy tří kapitol + size, color, rule (linka pod nadpisem) */
+const PROFILES = {
+  klasik: {
+    name: 'Klasický',
+    hdr:   function(d) { return { r: headerText(d), size: 9 }; },
+    title: function(d) { return [{ text: 'Zpravodaj z kola č. ' + d.kolo, size: 16, bold: true, align: 'center', after: 8 }]; },
+    chap:  function(d) { return { labels: ['1. Výsledky', '2. Pořadí družstev', '3. Různé a ostatní'], size: 10 }; },
+  },
+  uredni: {
+    name: 'Úřední',
+    hdr:   function(d) {
+      return { l: [d.regionName, d.compName].filter(Boolean).join(' – '),
+               r: seasonText(d) ? 'Ročník ' + seasonText(d) : '', size: 9, rule: '000000' };
+    },
+    title: function(d) {
+      return [
+        { text: 'ZPRAVODAJ Č. ' + d.kolo, size: 14, bold: true, align: 'center', after: 2 },
+        { text: d.compName, size: 11, align: 'center', after: 8 },
+      ];
+    },
+    chap:  function(d) {
+      return { labels: ['I. VÝSLEDKY ' + d.kolo + '. KOLA', 'II. POŘADÍ DRUŽSTEV', 'III. RŮZNÉ A OSTATNÍ'],
+               size: 10, rule: '000000' };
+    },
+  },
+  moderni: {
+    name: 'Moderní',
+    hdr:   function(d) { return { c: [d.regionName, d.compName, seasonText(d)].filter(Boolean).join('  ·  '),
+                                  size: 8, color: '808080' }; },
+    title: function(d) {
+      return [
+        { text: d.kolo + '. kolo', size: 20, bold: true, color: '2F5496', align: 'left', after: 0 },
+        { text: d.compName, size: 11, color: '595959', align: 'left', after: 8 },
+      ];
+    },
+    titleRule: '2F5496',
+    chap:  function(d) {
+      return { labels: ['Výsledky', 'Průběžné pořadí', 'Informace řídícího soutěže'],
+               size: 12, color: '2F5496' };
+    },
+  },
+};
+const PROFILE_DEFAULT = 'klasik';
+function profileOf(key) { return PROFILES[key] || PROFILES[PROFILE_DEFAULT]; }
 
 /* Text řádku s rozhodčím pod zápasem. */
 const REF_LABEL = 'Rozhodčí: ';
@@ -686,6 +752,8 @@ const DEFAULT_POZNAMKA = 'Prosím o kontrolu hráčů i výsledků, zda jsem ně
 let _doc = null;      // { compId, kolo, compName, regionName, jmeno, dateStr, matchList, teamList, nameW, refs[] }
 let _rozne = '';      // HTML obsah editoru sekce Různé (přežije překreslení náhledu)
 let _withRef = true;  // přepínač Rozhodčí
+let _profile = PROFILE_DEFAULT;   // formátovací profil (klíč do PROFILES)
+const PROFILE_KEY = 'zpravodaj_profile';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -848,14 +916,35 @@ function richPdf(blocks) {
 }
 
 /* ── HTML náhled — rozměry tabulek 1:1 s DOCX ───────────────────── */
-function previewHtml(d, withRef, rozne) {
+/* pt → px (náhled), barva profilu → CSS */
+function ptPx(v) { return (v * 4 / 3).toFixed(2) + 'px'; }
+function cssColor(c) { return c ? '#' + c : '#000'; }
+function previewChap(ch, i, first) {
+  return '<div class="d-h' + (first ? ' first' : '') + '" style="font-size:' + ptPx(ch.size)
+       + ';color:' + cssColor(ch.color)
+       + (ch.rule ? ';border-bottom:1px solid ' + cssColor(ch.rule) + ';padding-bottom:1px' : '') + '">'
+       + esc(ch.labels[i]) + '</div>';
+}
+
+function previewHtml(d, withRef, rozne, profKey) {
+  const P = profileOf(profKey), ph = P.hdr(d), ch = P.chap(d);
   let h = '<div class="doc">';
 
-  h += '<div class="doc-hdr">' + esc(headerText(d)) + '</div>';
-  h += '<div class="d-title">' + esc('Zpravodaj z kola č. ' + d.kolo) + '</div>';
+  h += '<div class="doc-hdr" style="font-size:' + ptPx(ph.size) + ';color:' + cssColor(ph.color)
+     + (ph.rule ? ';border-bottom:1px solid ' + cssColor(ph.rule) + ';padding-bottom:1px' : '') + '">'
+     + (ph.c != null ? '<span class="c">' + esc(ph.c) + '</span>'
+                     : '<span>' + esc(ph.l || '') + '</span><span>' + esc(ph.r || '') + '</span>')
+     + '</div>';
+  P.title(d).forEach(function(t, i, arr) {
+    h += '<div class="d-title" style="font-size:' + ptPx(t.size) + ';font-weight:' + (t.bold ? 'bold' : 'normal')
+       + ';color:' + cssColor(t.color) + ';text-align:' + t.align + ';margin-bottom:' + ptPx(t.after)
+       + (P.titleRule && i === arr.length - 1
+           ? ';border-bottom:1.5px solid ' + cssColor(P.titleRule) + ';padding-bottom:' + ptPx(3) : '')
+       + '">' + esc(t.text) + '</div>';
+  });
 
   // 1. Výsledky — každý zápas vlastní tabulka, všechny stejně široké
-  h += '<div class="d-h first">1. Výsledky</div>';
+  h += previewChap(ch, 0, true);
   const mc = matchCols(d.nameW), mw = px(sum(mc));
   d.matchList.forEach(function(m, mi) {
     const nr = d.kolo + '.' + (mi + 1);
@@ -885,7 +974,7 @@ function previewHtml(d, withRef, rozne) {
   });
 
   // 2. Pořadí
-  h += '<div class="d-h">2. Pořadí družstev</div>';
+  h += previewChap(ch, 1);
   const sc = standingsCols();
   const hd = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
   h += '<table class="stand" style="width:' + px(sum(sc)) + '">' + colgroup(sc) + '<thead><tr>'
@@ -899,7 +988,7 @@ function previewHtml(d, withRef, rozne) {
   h += '</tbody></table>';
 
   // 3. Různé — text je upravitelný přímo v náhledu
-  h += '<div class="d-h">3. Různé a ostatní</div>';
+  h += previewChap(ch, 2);
   h += '<div class="rich-bar" id="richBar">'
      + '<button type="button" data-cmd="bold" title="Tučně (Ctrl/⌘+B)"><b>B</b></button>'
      + '<button type="button" data-cmd="italic" title="Kurzíva (Ctrl/⌘+I)"><i>I</i></button>'
@@ -923,7 +1012,7 @@ function previewHtml(d, withRef, rozne) {
 function renderPreview() {
   if (!_doc) return;
   const box = document.getElementById('preview');
-  box.innerHTML = previewHtml(_doc, _withRef, _rozne);
+  box.innerHTML = previewHtml(_doc, _withRef, _rozne, _profile);
   [].forEach.call(box.querySelectorAll('[data-ref]'), function(el) {
     el.addEventListener('input', function() { _doc.refs[+el.dataset.ref] = el.innerText.replace(/\s+/g, ' '); });
     // jméno je jednořádkové: Enter = přejdi na další rozhodčí / opusť pole
@@ -995,11 +1084,34 @@ function wireRichEditor() {
 }
 
 /* ── Sestavení DOCX ze stavu (až při stažení) ───────────────────── */
-function buildDocx(d, withRef, blocks) {
-  const children = [
-    para('Zpravodaj z kola č. ' + d.kolo, { bold: true, align: 'center', size: 32, after: 160 }),
-    para('1. Výsledky', { bold: true, size: FS, before: 60, after: 80 }),
-  ];
+/* Čára pod odstavcem (DOCX), barva hex, tloušťka v osminách pt */
+function docxRule(color, sz) {
+  return color ? { bottom: { style: 'single', size: sz || 6, color: color, space: 1 } } : undefined;
+}
+function docxChap(ch, i, before) {
+  return new docx.Paragraph({
+    keepNext: true,
+    spacing: { before: before, after: 80 },
+    border: docxRule(ch.rule),
+    children: [new docx.TextRun({ text: ch.labels[i], font: 'Arial', bold: true,
+                                  size: Math.round(ch.size * 2), color: ch.color || undefined })]
+  });
+}
+
+function buildDocx(d, withRef, blocks, profKey) {
+  const P = profileOf(profKey), hd = P.hdr(d), ch = P.chap(d);
+  const titles = P.title(d);
+  const children = titles.map(function(t, i) {
+    return new docx.Paragraph({
+      alignment: t.align,
+      keepNext: true,
+      spacing: { before: 0, after: Math.round(t.after * 20) },
+      border: i === titles.length - 1 ? docxRule(P.titleRule, 12) : undefined,
+      children: [new docx.TextRun({ text: t.text, font: 'Arial', bold: !!t.bold,
+                                    size: Math.round(t.size * 2), color: t.color || undefined })]
+    });
+  });
+  children.push(docxChap(ch, 0, 60));
 
   d.matchList.forEach(function(match, mi) {
     const ref = withRef ? (d.refs[mi] || '') : null;
@@ -1007,18 +1119,27 @@ function buildDocx(d, withRef, blocks) {
     if (mi < d.matchList.length - 1) children.push(gap());
   });
 
-  children.push(para('2. Pořadí družstev', { bold: true, size: FS, before: 200, after: 80 }));
+  children.push(docxChap(ch, 1, 200));
   children.push(buildStandingsTable(d.teamList));
-  children.push(para('3. Různé a ostatní', { bold: true, size: FS, before: 200, after: 80 }));
+  children.push(docxChap(ch, 2, 200));
 
   richDocx(blocks).forEach(function(p) { children.push(p); });
 
-  /* ── Stránkové záhlaví: kraj + název soutěže (vpravo) ── */
+  /* ── Stránkové záhlaví podle profilu: text uprostřed, nebo vlevo/vpravo
+     (pravá část na zarážce tabulátoru u pravého okraje) ── */
+  function hRun(text) {
+    return new docx.TextRun({ text: text, size: Math.round(hd.size * 2), font: 'Arial', color: hd.color || undefined });
+  }
+  const hRuns = hd.c != null ? [hRun(hd.c)]
+              : !hd.l ? [hRun(hd.r || '')]
+              : [hRun(hd.l)].concat(hd.r ? [hRun('\t' + hd.r)] : []);
   const pageHeader = new docx.Header({
     children: [new docx.Paragraph({
-      alignment: 'right',
+      alignment: hd.c != null ? 'center' : (hd.l ? 'left' : 'right'),
+      tabStops: [{ type: 'right', position: CONTENT }],
       spacing: { before: 0, after: 0 },
-      children: [new docx.TextRun({ text: headerText(d), size: 18, font: 'Arial' })]   // 9 pt
+      border: docxRule(hd.rule, 4),
+      children: hRuns
     })]
   });
 
@@ -1047,7 +1168,7 @@ async function downloadDocx() {
   btn.disabled = true;
   try {
     setMsg('Sestavuji DOCX…', null, 'dlMsg');
-    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, richBlocks(document.getElementById('pozn'))));
+    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile));
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo);
     const url = URL.createObjectURL(blob);
@@ -1109,12 +1230,29 @@ const PDF_TABLE_LAYOUT = {
   paddingTop: function() { return 1.2; }, paddingBottom: function() { return 1.2; },
 };
 
-function buildPdfDef(d, withRef, blocks) {
+/* Vodorovná čára přes šířku sazby (pdfmake canvas) */
+function pdfRule(color, w) {
+  return { canvas: [{ type: 'line', x1: 0, y1: 0, x2: pt(CONTENT), y2: 0, lineWidth: w, lineColor: '#' + color }] };
+}
+function pdfChap(ch, i, before) {
+  const t = { text: ch.labels[i], bold: true, fontSize: ch.size, color: ch.color ? '#' + ch.color : undefined };
+  if (!ch.rule) return Object.assign(t, { margin: [0, before, 0, pt(80)] });
+  return { stack: [t, pdfRule(ch.rule, 0.75)], margin: [0, before, 0, pt(80)] };
+}
+
+function buildPdfDef(d, withRef, blocks, profKey) {
   const HDR = '#' + C_HDR, ALT = '#' + C_ALT;
-  const content = [
-    { text: 'Zpravodaj z kola č. ' + d.kolo, bold: true, fontSize: 16, alignment: 'center', margin: [0, 0, 0, pt(160)] },
-    { text: '1. Výsledky', bold: true, fontSize: 10, margin: [0, pt(60), 0, pt(80)] },
-  ];
+  const P = profileOf(profKey), hd = P.hdr(d), ch = P.chap(d);
+  const titles = P.title(d);
+  const content = titles.map(function(t, i) {
+    const tx = { text: t.text, bold: !!t.bold, fontSize: t.size, alignment: t.align,
+                 color: t.color ? '#' + t.color : undefined };
+    // linka pod poslední řádkou hlavičky (jako border v DOCX / náhledu)
+    if (P.titleRule && i === titles.length - 1)
+      return { stack: [tx, Object.assign(pdfRule(P.titleRule, 1.5), { margin: [0, 3, 0, 0] })], margin: [0, 0, 0, t.after] };
+    return Object.assign(tx, { margin: [0, 0, 0, t.after] });
+  });
+  content.push(pdfChap(ch, 0, pt(60)));
 
   const mw = pdfWidths(matchCols(d.nameW));
   d.matchList.forEach(function(m, mi) {
@@ -1145,7 +1283,7 @@ function buildPdfDef(d, withRef, blocks) {
     });
   });
 
-  content.push({ text: '2. Pořadí družstev', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
+  content.push(pdfChap(ch, 1, pt(200)));
   const sc = standingsCols();
   const aligns = ['center', 'left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'];
   const sBody = [['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'].map(function(x, i) {
@@ -1159,7 +1297,7 @@ function buildPdfDef(d, withRef, blocks) {
   content.push({ table: { widths: pdfWidths(sc), body: sBody, headerRows: 1, dontBreakRows: true },
                  layout: PDF_TABLE_LAYOUT, fontSize: 10, unbreakable: true });
 
-  content.push({ text: '3. Různé a ostatní', bold: true, fontSize: 10, margin: [0, pt(200), 0, pt(80)] });
+  content.push(pdfChap(ch, 2, pt(200)));
   richPdf(blocks).forEach(function(n) { content.push(n); });
 
 
@@ -1167,12 +1305,21 @@ function buildPdfDef(d, withRef, blocks) {
     pageSize: 'A4',
     // okraje jako DOCX: horní 1,4 cm, ostatní 1 in; záhlaví 0,7 cm od kraje
     pageMargins: [pt(MARGIN), pt(Math.round(1.4 * CM)), pt(MARGIN), pt(MARGIN)],
-    header: { text: headerText(d), alignment: 'right', fontSize: 9,
-              margin: [pt(MARGIN), pt(Math.round(0.7 * CM)), pt(MARGIN), 0] },
+    header: pdfHeader(hd),
     defaultStyle: { font: 'Roboto', fontSize: 11 },
     info: { title: 'Zpravodaj z kola č. ' + d.kolo + ' — ' + d.compName },
     content: content,
   };
+}
+
+/* Záhlaví stránky PDF podle profilu (0,7 cm od kraje) */
+function pdfHeader(hd) {
+  const st = { fontSize: hd.size, color: hd.color ? '#' + hd.color : undefined };
+  const row = hd.c != null ? Object.assign({ text: hd.c, alignment: 'center' }, st)
+            : { columns: [Object.assign({ text: hd.l || '', width: '*' }, st),
+                          Object.assign({ text: hd.r || '', width: 'auto', alignment: 'right' }, st)], columnGap: 12 };
+  return { stack: [row].concat(hd.rule ? [Object.assign(pdfRule(hd.rule, 0.5), { margin: [0, 1, 0, 0] })] : []),
+           margin: [pt(MARGIN), pt(Math.round(0.7 * CM)), pt(MARGIN), 0] };
 }
 
 async function downloadPdf() {
@@ -1184,7 +1331,7 @@ async function downloadPdf() {
     await loadPdfMake();
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo, 'pdf');
-    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, richBlocks(document.getElementById('pozn')))).download(fname);
+    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile)).download(fname);
     saveHistoryEntry({ compId: _doc.compId, compName: _doc.compName, fname: tpl, ts: Date.now() });
     setMsg('✓ Staženo: ' + esc(fname), 'ok', 'dlMsg');
   } catch (e) {
@@ -1625,6 +1772,22 @@ window.addEventListener('DOMContentLoaded', function() {
     b.addEventListener('click', function() {
       _withRef = b.dataset.v === '1';
       [].forEach.call(document.querySelectorAll('#refSeg button'), function(x) { x.classList.toggle('on', x === b); });
+      renderPreview();
+    });
+  });
+
+  // Přepínač vzhledu (profil) — pamatuje se v prohlížeči, změna hned v náhledu
+  function setProfile(k) {
+    _profile = PROFILES[k] ? k : PROFILE_DEFAULT;
+    [].forEach.call(document.querySelectorAll('#profSeg button'), function(x) {
+      x.classList.toggle('on', x.dataset.v === _profile);
+    });
+  }
+  try { setProfile(localStorage.getItem(PROFILE_KEY)); } catch (e) {}
+  [].forEach.call(document.querySelectorAll('#profSeg button'), function(b) {
+    b.addEventListener('click', function() {
+      setProfile(b.dataset.v);
+      try { localStorage.setItem(PROFILE_KEY, _profile); } catch (e) {}
       renderPreview();
     });
   });

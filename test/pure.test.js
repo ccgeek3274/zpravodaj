@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
-        matchCols, standingsCols, refLine, richBlocks, headerText, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, refLine, richBlocks, headerText, profileOf, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
@@ -219,4 +219,19 @@ test('sizeAtNode — <font size>, CSS font-size, základ 11 pt', () => {
   assert.equal(sizeAtNode(t1, ed), 14);
   assert.equal(sizeAtNode(t2, ed), 12);
   assert.equal(sizeAtNode(t3, ed), 11);
+});
+
+test('profileOf — Klasický = původní vzhled, neznámý klíč → Klasický', () => {
+  const d = { kolo: '2', season: 2025, compName: 'KP', regionName: 'JmKŠS' };
+  const k = profileOf('klasik');
+  assert.equal(k.hdr(d).r, headerText(d));
+  assert.equal(k.title(d)[0].text, 'Zpravodaj z kola č. 2');
+  assert.deepEqual(plain(k.chap(d).labels), ['1. Výsledky', '2. Pořadí družstev', '3. Různé a ostatní']);
+  assert.equal(profileOf('neexistuje'), k);
+  assert.equal(profileOf(null), k);
+  // Úřední: ročník vpravo, bez sezóny prázdný
+  assert.equal(profileOf('uredni').hdr(d).r, 'Ročník 2025/2026');
+  assert.equal(profileOf('uredni').hdr(Object.assign({}, d, { season: null })).r, '');
+  assert.equal(profileOf('uredni').chap(d).labels[0], 'I. VÝSLEDKY 2. KOLA');
+  assert.equal(profileOf('moderni').title(d)[0].text, '2. kolo');
 });

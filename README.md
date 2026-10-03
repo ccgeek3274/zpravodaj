@@ -21,6 +21,13 @@ Práce má tři kroky:
    u kurzoru) a ↺ návrat k výchozímu textu.
    Ze schránky se vkládá jen prostý text.
    Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
+   Stejně tak přepínač **Vzhled** (pamatuje se v prohlížeči) — tři profily,
+   které se liší záhlavím stránky, hlavičkou a nadpisy kapitol:
+   - *Klasický* — záhlaví vpravo, „Zpravodaj z kola č. N“, „1. Výsledky“ …
+   - *Úřední* — záhlaví kraj – soutěž vlevo / ročník vpravo s linkou,
+     „ZPRAVODAJ Č. N“ + název soutěže, kapitoly „I. VÝSLEDKY N. KOLA“ … podtržené
+   - *Moderní* — šedé záhlaví uprostřed, modré „N. kolo“ + soutěž s linkou,
+     modré kapitoly „Výsledky“, „Průběžné pořadí“, „Informace řídícího soutěže“
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
    DOCX** nebo **Stáhnout PDF**. Obojí se sestaví až teď, se všemi úpravami.
    PDF generuje přímo prohlížeč (pdfmake, písmo Roboto) ze stejných dat
@@ -40,7 +47,7 @@ Práce má tři kroky:
   hráče i názvu týmu (měřeno přes canvas), aby se nic nezalomilo.
 - Tabulky se nedělí mezi stránky (`cantSplit` + `keepNext`).
 - Jméno vedoucího se bere z API (`compManagerName`).
-- Záhlaví stránky na jednom řádku (9 pt): *Kraj - Soutěž - Ročník*; ročník se
+- Záhlaví stránky na jednom řádku (9 pt, profil Klasický): *Kraj - Soutěž - Ročník*; ročník se
   dohledá v seznamu soutěží (endpoint `details` ho nevrací).
 
 ## Nasazení (Cloudflare Workers — static assets)
