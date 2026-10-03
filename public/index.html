@@ -165,7 +165,9 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 .doc table.res { margin-bottom:16.87px; }   /* = prázdný řádek 11 pt (gap() v DOCX) */
 .doc table.res:last-of-type { margin-bottom:0; }
 .doc td, .doc th { border:1px solid #AAA; padding:1.6px 6px; vertical-align:middle;
-  overflow:hidden; white-space:nowrap; font-weight:normal; }
+  overflow:hidden; overflow-wrap:anywhere; font-weight:normal; }
+.fit-warn { width:794px; max-width:100%; margin:0 auto 10px; padding:8px 12px; font-size:13px;
+  background:#fff3cd; color:#664d03; border:1px solid #e6c46a; border-radius:2px; }
 .doc .c { text-align:center; } .doc .r { text-align:right; } .doc .l { text-align:left; }
 .doc tr.mh td { background:#C8D9F0; font-weight:bold; padding-top:1px; padding-bottom:1px; }
 .doc table.stand th { background:#C8D9F0; font-weight:bold; }
@@ -180,9 +182,9 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 .doc .rich ul, .doc .rich ol { margin:0; padding-left:24px; }
 .doc .rich li { margin:0 0 6.67px; }
 .doc .rich font[size="1"] { font-size:10.67px; } .doc .rich font[size="2"] { font-size:12px; }
-.doc .rich font[size="3"] { font-size:14.67px; } .doc .rich font[size="4"] { font-size:16px; }
-.doc .rich font[size="5"] { font-size:18.67px; } .doc .rich font[size="6"] { font-size:21.33px; }
-.doc .rich font[size="7"] { font-size:24px; }
+.doc .rich font[size="3"] { font-size:13.33px; } .doc .rich font[size="4"] { font-size:14.67px; }
+.doc .rich font[size="5"] { font-size:16px; } .doc .rich font[size="6"] { font-size:18.67px; }
+.doc .rich font[size="7"] { font-size:21.33px; }
 /* Lišta editoru — UI prvek uvnitř „papíru“, v tisku skrytá */
 .rich-bar { display:flex; gap:4px; align-items:center; flex-wrap:wrap; margin:0 0 6px;
   font-family:var(--mono); }
@@ -288,6 +290,17 @@ input:disabled { opacity:.6; cursor:not-allowed; }
         <span class="hint">Záhlaví stránky, hlavička a nadpisy kapitol. Lze přepnout i po vygenerování.</span>
       </div>
 
+      <div class="field">
+        <span class="eyebrow">Písmo (pt)</span>
+        <div class="seg" id="fontSeg">
+          <button type="button" data-v="9">9</button>
+          <button type="button" data-v="10" class="on">10</button>
+          <button type="button" data-v="11">11</button>
+          <button type="button" data-v="12">12</button>
+        </div>
+        <span class="hint">Tabulky, řádek Rozhodčí a text v Různé. Šířky sloupců se přepočítají.</span>
+      </div>
+
       <div class="actions">
         <button id="btn-gen" class="btn-primary" onclick="generate()">Generovat</button>
         <button id="btn-clear" class="btn-outline" onclick="clearCache()"
@@ -354,9 +367,13 @@ const CM      = 567;                 // 1 cm ≈ 567 twips (dxa)
 const COL_BOARD  = 460;
 const COL_RESULT = 1120;
 const COL_ELO    = 640;
-// COL_NAME se počítá dynamicky podle nejdelšího jména (viz computeNameWidth)
+// Výchozí šířky; sloupce se jmény i rozšíření ostatních počítá matchLayout
 
 const FS = 20;             // 10 pt (half-points)
+// Velikost písma tabulek, řádku Rozhodčí a textu Různé (pt) — přepínač Písmo
+const FONT_PTS = [9, 10, 11, 12];
+const FONT_DEFAULT = 10;
+const FONT_KEY = 'zpravodaj_font';
 // Min. rozestup mezi voláními API (ms). Serializovaná fronta s 300 ms
 // je pro chess.cz bezpečná; nárazy (paralelní dávky) by IP zablokovaly.
 const API_INTERVAL = 300;
@@ -502,53 +519,83 @@ function vedouciName(s) {
 }
 
 // Šířka textu v px (Arial 10 pt). V prohlížeči přesně přes canvas, v Node hrubý odhad.
-function textWidthPx(text, bold) {
-  text = text || '';
+function textWidthPx(text, bold, fpt) {
+  text = String(text == null ? '' : text);
+  fpt = fpt || FONT_DEFAULT;
   if (typeof document !== 'undefined' && document.createElement) {
     const c = textWidthPx._c || (textWidthPx._c = document.createElement('canvas'));
     const ctx = c.getContext('2d');
-    ctx.font = (bold ? 'bold ' : '') + '10pt Arial';
+    ctx.font = (bold ? 'bold ' : '') + fpt + 'pt Arial';
     return ctx.measureText(text).width;
   }
-  return text.length * (bold ? 7.4 : 7.0); // fallback (testy v Node) – konzervativní
+  return text.length * (bold ? 7.4 : 7.0) * fpt / FONT_DEFAULT; // fallback (testy v Node) – konzervativní
 }
 
-// Šířka sloupce se jmény v DXA. Zohledňuje:
-//  – jména hráčů (běžným řezem) → potřebují nameW
-//  – názvy týmů (TUČNĚ, širší!)  → jsou v buňce přes span (jméno + ELO),
-//    takže potřebují nameW + COL_ELO
-// Vrací max obou požadavků, ať se nikdy nic nezalomí.
-function computeNameWidth(matchList) {
-  let maxPlayerPx = 0, maxTeamPx = 0;
-  matchList.forEach(function(m) {
-    maxTeamPx = Math.max(maxTeamPx,
-      textWidthPx(m.homeTeamName || '', true),
-      textWidthPx(m.awayTeamName || '', true));
+/* Šířka sloupce (DXA) pro nejširší z textů: okraje buňky (90+90) + malá
+   rezerva proti zalomení (Roboto v PDF je do 2 % širší než Arial, tučný užší).
+   Nikdy užší než výchozí šířka base. */
+const CELL_MARG = 180;
+function colFor(texts, bold, fpt, base) {
+  let px = 0;
+  texts.forEach(function(t) { px = Math.max(px, textWidthPx(t, bold, fpt)); });
+  return Math.max(base, Math.ceil(px * 15 * 1.02) + CELL_MARG + 40);
+}
+/* Nutné minimum bez rezervy — jen pro varování, že se text zalomí. */
+function colMin(texts, bold, fpt) {
+  let px = 0;
+  texts.forEach(function(t) { px = Math.max(px, textWidthPx(t, bold, fpt)); });
+  return Math.ceil(px * 15) + CELL_MARG;
+}
+
+/* Rozměry výsledkové tabulky (DXA) pro velikost písma fpt — sdílí náhled,
+   DOCX i PDF. Úzké sloupce (číslo, ELO, výsledek) mají výchozí šířku a rozšíří
+   se jen když je potřeba; sloupce se jmény dostanou, co potřebují:
+     – jména hráčů (běžným řezem) → name
+     – názvy týmů (TUČNĚ) jsou přes span jméno + ELO → name + elo
+   fits = false: nejdelší jméno se nevejde ani do max. šířky (v DOCX/PDF se zalomí). */
+function matchLayout(matchList, kolo, fpt) {
+  fpt = fpt || FONT_DEFAULT;
+  const nrs = [], elos = [], res = [], scores = [], players = [], teams = [];
+  matchList.forEach(function(m, mi) {
+    nrs.push(kolo + '.' + (mi + 1));
+    scores.push(fmtScore(m.homeTeamScore, m.awayTeamScore));
+    teams.push(m.homeTeamName || '', m.awayTeamName || '');
     norm(m.matchGames).forEach(function(g) {
-      maxPlayerPx = Math.max(maxPlayerPx,
-        textWidthPx(g.homePlayerName || '', false),
-        textWidthPx(g.awayPlayerName || '', false));
+      elos.push(eloStr(g.homePlayerRating), eloStr(g.awayPlayerRating));
+      res.push(fmtResult(g.homePlayerResult, g.awayPlayerResult));
+      players.push(g.homePlayerName || '', g.awayPlayerName || '');
     });
   });
-  const MARG = 180, REZ = 140;           // okraje buňky (90+90) + rezerva proti zalomení
-  const needPlayer = Math.ceil(maxPlayerPx * 15) + MARG + REZ;
-  const needTeam   = Math.ceil(maxTeamPx   * 15) + MARG + REZ - COL_ELO; // tým má navíc ELO sloupec
-  const w = Math.max(needPlayer, needTeam);
-  const maxAllowed = Math.floor((CONTENT - COL_BOARD - 2 * COL_ELO - COL_RESULT) / 2);
-  return Math.max(1200, Math.min(w, maxAllowed));
+  const board  = colFor(nrs, true, fpt, COL_BOARD);
+  const elo    = colFor(elos, false, fpt, COL_ELO);
+  const result = Math.max(colFor(res, false, fpt, COL_RESULT), colFor(scores, true, fpt, COL_RESULT));
+  const need   = Math.max(colFor(players, false, fpt, 0), colFor(teams, true, fpt, 0) - elo);
+  const maxAllowed = Math.floor((CONTENT - board - 2 * elo - result) / 2);
+  const name = Math.max(1200, Math.min(need, maxAllowed));
+  return { board: board, name: name, elo: elo, result: result,
+           fits: colMin(players, false, fpt) <= name && colMin(teams, true, fpt) <= name + elo };
 }
 
-/* Sloupce výsledkové tabulky (DXA) — sdílí DOCX i HTML náhled. */
-function matchCols(nameW) {
-  return [COL_BOARD, nameW, COL_ELO, COL_RESULT, COL_ELO, nameW];
+/* Sloupce výsledkové tabulky (DXA). */
+function matchCols(lay) {
+  return [lay.board, lay.name, lay.elo, lay.result, lay.elo, lay.name];
 }
-/* Sloupce tabulky pořadí (DXA): P | Družstvo | Z | + | = | − | B | Sk | V,
-   Družstvo dopočítá zbytek do šířky sazby. */
-function standingsCols() {
-  const ws = [480, 0, 520, 520, 520, 520, 620, 700, 620];
-  ws[1] = CONTENT - ws.reduce(function(a, b) { return a + b; }, 0);
-  return ws;
+/* Sloupce tabulky pořadí (DXA): P | Družstvo | Z | + | = | − | B | Sk | V.
+   Číselné sloupce se podle potřeby rozšíří (záhlaví tučně, hodnoty),
+   Družstvo dopočítá zbytek do šířky sazby. fits = názvy družstev se vejdou. */
+const STAND_HDRS = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
+function standingsLayout(teamList, fpt) {
+  teamList = teamList || [];
+  const base = [480, 0, 520, 520, 520, 520, 620, 700, 620];
+  const rows = teamList.map(function(t, idx) { return standingsVals(t, idx).map(String); });
+  const ws = base.map(function(b, i) {
+    if (i === 1) return 0;
+    return Math.max(colFor([STAND_HDRS[i]], true, fpt, b), colFor(rows.map(function(r) { return r[i]; }), false, fpt, b));
+  });
+  ws[1] = CONTENT - sum(ws);
+  return { cols: ws, fits: colMin(rows.map(function(r) { return r[1]; }), false, fpt) <= ws[1] };
 }
+function standingsCols(teamList, fpt) { return standingsLayout(teamList, fpt).cols; }
 function sum(arr) { return arr.reduce(function(a, b) { return a + b; }, 0); }
 
 /* Záhlaví stránky: „Kraj - Soutěž - Ročník“ (ročník jen když je sezóna známá). */
@@ -611,6 +658,12 @@ const PROFILES = {
 };
 const PROFILE_DEFAULT = 'klasik';
 function profileOf(key) { return PROFILES[key] || PROFILES[PROFILE_DEFAULT]; }
+/* Nadpisy kapitol profilu; při jiném písmu než 10 pt se posunou o stejný
+   rozdíl, ať nadpis nikdy není menší než text pod ním. */
+function chapOf(P, d, fpt) {
+  const ch = P.chap(d);
+  return Object.assign({}, ch, { size: ch.size + (fpt || FONT_DEFAULT) - FONT_DEFAULT });
+}
 
 /* Text řádku s rozhodčím pod zápasem. */
 const REF_LABEL = 'Rozhodčí: ';
@@ -645,21 +698,23 @@ function cell(text, opts) {
 }
 
 /* ── Tabulka jednoho zápasu (6 sloupců) ─────────────────────────── */
-function buildMatchTable(match, matchNr, nameW, refName) {
+function buildMatchTable(match, matchNr, lay, refName, fpt) {
   // refName: null = bez řádku rozhodčího, jinak jméno (i prázdné)
   const withRef = refName != null;
   const games   = norm(match.matchGames);
   const score   = fmtScore(match.homeTeamScore, match.awayTeamScore);
-  const cols    = matchCols(nameW);
+  const cols    = matchCols(lay);
+  const fs      = fpt * 2;
+  const nameW   = lay.name;
   const tableW  = sum(cols);
   const rows    = [];
 
   // Záhlaví zápasu (modré): číslo | DOMÁCÍ (span2, vlevo) | skóre | HOSTÉ (span2, vpravo)
   rows.push(new docx.TableRow({ cantSplit: true, children: [
-    cell(matchNr,                  { w: COL_BOARD,        bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
-    cell(match.homeTeamName || '', { w: nameW + COL_ELO,  bold: true, bg: C_HDR, align: 'left',  span: 2, vm: 14, keepNext: true }),
-    cell(score,                    { w: COL_RESULT,       bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
-    cell(match.awayTeamName || '', { w: COL_ELO + nameW,  bold: true, bg: C_HDR, align: 'right', span: 2, vm: 14, keepNext: true }),
+    cell(matchNr,                  { w: lay.board,        fs: fs, bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
+    cell(match.homeTeamName || '', { w: nameW + lay.elo,  fs: fs, bold: true, bg: C_HDR, align: 'left',  span: 2, vm: 14, keepNext: true }),
+    cell(score,                    { w: lay.result,       fs: fs, bold: true, bg: C_HDR, align: 'center', vm: 14, keepNext: true }),
+    cell(match.awayTeamName || '', { w: lay.elo + nameW,  fs: fs, bold: true, bg: C_HDR, align: 'right', span: 2, vm: 14, keepNext: true }),
   ]}));
 
   // Partie: č. | dom.jméno(vlevo) | dom.ELO(vpravo) | výsledek | hosté ELO(vlevo) | hosté jméno(vlevo)
@@ -667,19 +722,19 @@ function buildMatchTable(match, matchNr, nameW, refName) {
     // poslední řádek tabulky bez keepNext (neslepovat s textem za tabulkou)
     const kn = idx < games.length - 1 || withRef;
     rows.push(new docx.TableRow({ cantSplit: true, children: [
-      cell(idx + 1,                       { w: COL_BOARD,  align: 'center', keepNext: kn }),
-      cell(game.homePlayerName || '',     { w: nameW,      align: 'left',   keepNext: kn }),
-      cell(eloStr(game.homePlayerRating), { w: COL_ELO,    align: 'right',  keepNext: kn }),
-      cell(fmtResult(game.homePlayerResult, game.awayPlayerResult), { w: COL_RESULT, align: 'center', keepNext: kn }),
-      cell(eloStr(game.awayPlayerRating), { w: COL_ELO,    align: 'left',   keepNext: kn }),
-      cell(game.awayPlayerName || '',     { w: nameW,      align: 'left',   keepNext: kn }),
+      cell(idx + 1,                       { w: lay.board,  fs: fs, align: 'center', keepNext: kn }),
+      cell(game.homePlayerName || '',     { w: nameW,      fs: fs, align: 'left',   keepNext: kn }),
+      cell(eloStr(game.homePlayerRating), { w: lay.elo,    fs: fs, align: 'right',  keepNext: kn }),
+      cell(fmtResult(game.homePlayerResult, game.awayPlayerResult), { w: lay.result, fs: fs, align: 'center', keepNext: kn }),
+      cell(eloStr(game.awayPlayerRating), { w: lay.elo,    fs: fs, align: 'left',   keepNext: kn }),
+      cell(game.awayPlayerName || '',     { w: nameW,      fs: fs, align: 'left',   keepNext: kn }),
     ]}));
   });
 
   // Rozhodčí: jedna buňka přes celou šířku tabulky
   if (withRef) {
     rows.push(new docx.TableRow({ cantSplit: true, children: [
-      cell(refLine(refName), { w: tableW, span: 6, align: 'left' }),
+      cell(refLine(refName), { w: tableW, fs: fs, span: 6, align: 'left' }),
     ]}));
   }
 
@@ -691,37 +746,28 @@ function buildMatchTable(match, matchNr, nameW, refName) {
 }
 
 /* ── Tabulka pořadí ─────────────────────────────────────────────── */
-function buildStandingsTable(teamList) {
-  var ws = standingsCols();
+function buildStandingsTable(teamList, fpt) {
+  var ws = standingsCols(teamList, fpt);
+  var fs = fpt * 2;
 
-  var hdrs   = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
+  var hdrs   = STAND_HDRS;
   var aligns = ['center','left','center','center','center','center','center','center','center'];
 
   var rows = [];
 
   rows.push(new docx.TableRow({ cantSplit: true,
     children: hdrs.map(function(h, i) {
-      return cell(h, { w: ws[i], bold: true, bg: C_HDR, align: aligns[i], keepNext: true });
+      return cell(h, { w: ws[i], fs: fs, bold: true, bg: C_HDR, align: aligns[i], keepNext: true });
     })
   }));
 
   teamList.forEach(function(team, idx) {
     var bg   = idx % 2 === 1 ? C_ALT : C_WHITE;
     var kn   = idx < teamList.length - 1;   // poslední řádek bez keepNext
-    var vals = [
-      team.teamRank    != null ? team.teamRank    : (idx + 1),
-      team.teamName    || '',
-      team.matchesPlayed != null ? team.matchesPlayed : 0,
-      team.matchWins   != null ? team.matchWins   : 0,
-      team.matchDraws  != null ? team.matchDraws  : 0,
-      team.matchLosses != null ? team.matchLosses : 0,
-      team.points      != null ? team.points      : 0,
-      fmtHalf(team.score),
-      team.wonGames    != null ? team.wonGames    : 0,
-    ];
+    var vals = standingsVals(team, idx);
     rows.push(new docx.TableRow({ cantSplit: true,
       children: vals.map(function(v, i) {
-        return cell(v, { w: ws[i], bg: bg, align: aligns[i], keepNext: kn });
+        return cell(v, { w: ws[i], fs: fs, bg: bg, align: aligns[i], keepNext: kn });
       })
     }));
   });
@@ -753,10 +799,11 @@ function gap() {
    Generování = načtení dat + náhled. Úpravy v náhledu (rozhodčí,
    sekce Různé) se píšou sem; DOCX se z toho sestaví až při stažení. */
 const DEFAULT_POZNAMKA = 'Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.';
-let _doc = null;      // { compId, kolo, compName, regionName, jmeno, dateStr, matchList, teamList, nameW, refs[] }
+let _doc = null;      // { compId, kolo, compName, regionName, jmeno, dateStr, matchList, teamList, refs[] }
 let _rozne = '';      // HTML obsah editoru sekce Různé (přežije překreslení náhledu)
 let _withRef = true;  // přepínač Rozhodčí
 let _profile = PROFILE_DEFAULT;   // formátovací profil (klíč do PROFILES)
+let _fontPt  = FONT_DEFAULT;      // velikost písma tabulek / Rozhodčí / Různé (pt)
 const PROFILE_KEY = 'zpravodaj_profile';
 
 function esc(s) {
@@ -785,14 +832,14 @@ function standingsVals(t, idx) {
      [{ li: bool, runs: [{ text, b, i, u, size(pt) }] }]
    a z modelu se sestaví DOCX i PDF. Vkládání ze schránky je jen
    prostý text, takže v editoru je jen to, co vyrobí lišta. */
-const RICH_BASE_PT = 11;
+// Text bez vlastní velikosti má velikost písma tabulek (přepínač Písmo).
 // <font size="N"> (execCommand fontSize) → pt
-const FONT_SIZE_PT = { 1: 8, 2: 9, 3: 11, 4: 12, 5: 14, 6: 16, 7: 18 };
-const RICH_SIZES = [2, 3, 4, 5, 6];   // nabízené velikosti (9–16 pt), 3 = základních 11 pt
+const FONT_SIZE_PT = { 1: 8, 2: 9, 3: 10, 4: 11, 5: 12, 6: 14, 7: 16 };
+const RICH_SIZES = [2, 3, 4, 5, 6, 7];   // nabízené velikosti 9–16 pt
 
 /* Velikost písma (pt) v místě uzlu: nejbližší <font size> / CSS font-size
-   směrem k editoru, jinak základní velikost. */
-function sizeAtNode(node, root) {
+   směrem k editoru, jinak základní velikost base. */
+function sizeAtNode(node, root, base) {
   let el = node && node.nodeType === 3 ? node.parentNode : node;
   while (el && el !== root) {
     if (el.nodeName === 'FONT' && el.getAttribute('size')) {
@@ -803,7 +850,7 @@ function sizeAtNode(node, root) {
     if (css) return css;
     el = el.parentNode;
   }
-  return RICH_BASE_PT;
+  return base || FONT_DEFAULT;
 }
 
 function defaultRozne(d) {
@@ -879,14 +926,14 @@ function richBlocks(root) {
 }
 
 /* Model → odstavce DOCX. Prázdný blok = prázdný řádek. */
-function richDocx(blocks) {
+function richDocx(blocks, base) {
   return blocks.map(function(bl) {
     return new docx.Paragraph({
       spacing: { before: 0, after: 100 },
       bullet: bl.li ? { level: 0 } : undefined,
       children: bl.runs.map(function(r) {
         return new docx.TextRun({
-          text: r.text, font: 'Arial', size: Math.round((r.size || RICH_BASE_PT) * 2),
+          text: r.text, font: 'Arial', size: Math.round((r.size || base) * 2),
           bold: r.b || undefined, italics: r.i || undefined, underline: r.u ? {} : undefined,
         });
       }),
@@ -895,7 +942,7 @@ function richDocx(blocks) {
 }
 
 /* Model → obsah pdfmake (po sobě jdoucí odrážky = jeden seznam). */
-function richPdf(blocks) {
+function richPdf(blocks, base) {
   const out = [];
   let ul = null;
   blocks.forEach(function(bl) {
@@ -904,7 +951,7 @@ function richPdf(blocks) {
       if (r.b) o.bold = true;
       if (r.i) o.italics = true;
       if (r.u) o.decoration = 'underline';
-      if (r.size) o.fontSize = r.size;
+      o.fontSize = r.size || base;
       return o;
     });
     const node = { text: runs.length ? runs : ' ', margin: [0, 0, 0, pt(100)] };
@@ -930,9 +977,17 @@ function previewChap(ch, i, first) {
        + esc(ch.labels[i]) + '</div>';
 }
 
-function previewHtml(d, withRef, rozne, profKey) {
-  const P = profileOf(profKey), ph = P.hdr(d), ch = P.chap(d);
-  let h = '<div class="doc">';
+function previewHtml(d, withRef, rozne, profKey, fpt) {
+  fpt = fpt || FONT_DEFAULT;
+  const P = profileOf(profKey), ph = P.hdr(d), ch = chapOf(P, d, fpt);
+  const lay = matchLayout(d.matchList, d.kolo, fpt), sl = standingsLayout(d.teamList, fpt);
+  const tfs = 'font-size:' + ptPx(fpt);
+  let h = '';
+  if (!lay.fits || !sl.fits)
+    h += '<div class="fit-warn">⚠ Při písmu ' + fpt + ' pt se nejdelší '
+       + (!lay.fits ? 'jméno nebo název družstva ve výsledcích' : 'název družstva v pořadí')
+       + ' nevejde na jeden řádek — v DOCX (případně i PDF) se zalomí na dva. Zkuste menší písmo.</div>';
+  h += '<div class="doc">';
 
   h += '<div class="doc-hdr" style="font-size:' + ptPx(ph.size) + ';color:' + cssColor(ph.color)
      + (ph.rule ? ';border-bottom:1px solid ' + cssColor(ph.rule) + ';padding-bottom:1px' : '') + '">'
@@ -949,10 +1004,10 @@ function previewHtml(d, withRef, rozne, profKey) {
 
   // 1. Výsledky — každý zápas vlastní tabulka, všechny stejně široké
   h += previewChap(ch, 0, true);
-  const mc = matchCols(d.nameW), mw = px(sum(mc));
+  const mc = matchCols(lay), mw = px(sum(mc));
   d.matchList.forEach(function(m, mi) {
     const nr = d.kolo + '.' + (mi + 1);
-    h += '<table class="res" style="width:' + mw + '">' + colgroup(mc) + '<tbody>';
+    h += '<table class="res" style="width:' + mw + ';' + tfs + '">' + colgroup(mc) + '<tbody>';
     h += '<tr class="mh">'
        + '<td class="c">' + esc(nr) + '</td>'
        + '<td colspan="2">' + esc(m.homeTeamName || '') + '</td>'
@@ -979,9 +1034,9 @@ function previewHtml(d, withRef, rozne, profKey) {
 
   // 2. Pořadí
   h += previewChap(ch, 1);
-  const sc = standingsCols();
-  const hd = ['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'];
-  h += '<table class="stand" style="width:' + px(sum(sc)) + '">' + colgroup(sc) + '<thead><tr>'
+  const sc = sl.cols;
+  const hd = STAND_HDRS;
+  h += '<table class="stand" style="width:' + px(sum(sc)) + ';' + tfs + '">' + colgroup(sc) + '<thead><tr>'
      + hd.map(function(x, i) { return '<th class="' + (i === 1 ? 'l' : 'c') + '">' + esc(x) + '</th>'; }).join('')
      + '</tr></thead><tbody>';
   d.teamList.forEach(function(t, idx) {
@@ -1006,7 +1061,7 @@ function previewHtml(d, withRef, rozne, profKey) {
      + '<button type="button" id="richReset" title="Vrátit výchozí text">↺</button>'
      + '</div>';
   // rozne je HTML z vlastního editoru (vkládání ze schránky jen jako prostý text)
-  h += '<div class="ed rich" id="pozn" contenteditable="true">' + rozne + '</div>';
+  h += '<div class="ed rich" id="pozn" contenteditable="true" style="' + tfs + '">' + rozne + '</div>';
 
   h += '</div>';
   return h;
@@ -1016,7 +1071,7 @@ function previewHtml(d, withRef, rozne, profKey) {
 function renderPreview() {
   if (!_doc) return;
   const box = document.getElementById('preview');
-  box.innerHTML = previewHtml(_doc, _withRef, _rozne, _profile);
+  box.innerHTML = previewHtml(_doc, _withRef, _rozne, _profile, _fontPt);
   [].forEach.call(box.querySelectorAll('[data-ref]'), function(el) {
     el.addEventListener('input', function() { _doc.refs[+el.dataset.ref] = el.innerText.replace(/\s+/g, ' '); });
     // jméno je jednořádkové: Enter = přejdi na další rozhodčí / opusť pole
@@ -1050,7 +1105,7 @@ function wireRichEditor() {
       try { on = document.queryCommandState(b.dataset.cmd); } catch (e) {}
       b.classList.toggle('on', on && inside);
     });
-    markSize(inside ? sizeAtNode(document.getSelection().anchorNode, ed) : null);
+    markSize(inside ? sizeAtNode(document.getSelection().anchorNode, ed, _fontPt) : null);
   }
   [].forEach.call(bar.querySelectorAll('button'), function(b) {
     b.addEventListener('mousedown', function(e) { e.preventDefault(); });   // ponech výběr v editoru
@@ -1102,8 +1157,10 @@ function docxChap(ch, i, before) {
   });
 }
 
-function buildDocx(d, withRef, blocks, profKey) {
-  const P = profileOf(profKey), hd = P.hdr(d), ch = P.chap(d);
+function buildDocx(d, withRef, blocks, profKey, fpt) {
+  fpt = fpt || FONT_DEFAULT;
+  const P = profileOf(profKey), hd = P.hdr(d), ch = chapOf(P, d, fpt);
+  const lay = matchLayout(d.matchList, d.kolo, fpt);
   const titles = P.title(d);
   const children = titles.map(function(t, i) {
     return new docx.Paragraph({
@@ -1119,15 +1176,15 @@ function buildDocx(d, withRef, blocks, profKey) {
 
   d.matchList.forEach(function(match, mi) {
     const ref = withRef ? (d.refs[mi] || '') : null;
-    children.push(buildMatchTable(match, d.kolo + '.' + (mi + 1), d.nameW, ref));
+    children.push(buildMatchTable(match, d.kolo + '.' + (mi + 1), lay, ref, fpt));
     if (mi < d.matchList.length - 1) children.push(gap());
   });
 
   children.push(docxChap(ch, 1, 200));
-  children.push(buildStandingsTable(d.teamList));
+  children.push(buildStandingsTable(d.teamList, fpt));
   children.push(docxChap(ch, 2, 200));
 
-  richDocx(blocks).forEach(function(p) { children.push(p); });
+  richDocx(blocks, fpt).forEach(function(p) { children.push(p); });
 
   /* ── Stránkové záhlaví podle profilu: text uprostřed, nebo vlevo/vpravo
      (pravá část na zarážce tabulátoru u pravého okraje) ── */
@@ -1172,7 +1229,7 @@ async function downloadDocx() {
   btn.disabled = true;
   try {
     setMsg('Sestavuji DOCX…', null, 'dlMsg');
-    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile));
+    const blob = await docx.Packer.toBlob(buildDocx(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile, _fontPt));
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo);
     const url = URL.createObjectURL(blob);
@@ -1244,9 +1301,10 @@ function pdfChap(ch, i, before) {
   return { stack: [t, pdfRule(ch.rule, 0.75)], margin: [0, before, 0, pt(80)] };
 }
 
-function buildPdfDef(d, withRef, blocks, profKey) {
+function buildPdfDef(d, withRef, blocks, profKey, fpt) {
+  fpt = fpt || FONT_DEFAULT;
   const HDR = '#' + C_HDR, ALT = '#' + C_ALT;
-  const P = profileOf(profKey), hd = P.hdr(d), ch = P.chap(d);
+  const P = profileOf(profKey), hd = P.hdr(d), ch = chapOf(P, d, fpt);
   const titles = P.title(d);
   const content = titles.map(function(t, i) {
     const tx = { text: t.text, bold: !!t.bold, fontSize: t.size, alignment: t.align,
@@ -1258,7 +1316,7 @@ function buildPdfDef(d, withRef, blocks, profKey) {
   });
   content.push(pdfChap(ch, 0, pt(60)));
 
-  const mw = pdfWidths(matchCols(d.nameW));
+  const mw = pdfWidths(matchCols(matchLayout(d.matchList, d.kolo, fpt)));
   d.matchList.forEach(function(m, mi) {
     const h = { bold: true, fillColor: HDR };
     const body = [[
@@ -1280,7 +1338,7 @@ function buildPdfDef(d, withRef, blocks, profKey) {
     if (withRef) body.push([{ text: refLine(d.refs[mi]), colSpan: 6 }, {}, {}, {}, {}, {}]);
     content.push({
       table: { widths: mw, body: body, dontBreakRows: true },
-      layout: PDF_TABLE_LAYOUT, fontSize: 10,
+      layout: PDF_TABLE_LAYOUT, fontSize: fpt,
       unbreakable: true,                          // zápas se nedělí mezi stránky
       // mezi zápasy jeden prázdný řádek 11 pt (jako gap() v DOCX)
       margin: [0, 0, 0, mi < d.matchList.length - 1 ? 12.65 : 0],
@@ -1288,9 +1346,9 @@ function buildPdfDef(d, withRef, blocks, profKey) {
   });
 
   content.push(pdfChap(ch, 1, pt(200)));
-  const sc = standingsCols();
+  const sc = standingsCols(d.teamList, fpt);
   const aligns = ['center', 'left', 'center', 'center', 'center', 'center', 'center', 'center', 'center'];
-  const sBody = [['P', 'Družstvo', 'Z', '+', '=', '−', 'B', 'Sk', 'V'].map(function(x, i) {
+  const sBody = [STAND_HDRS.map(function(x, i) {
     return { text: x, bold: true, fillColor: HDR, alignment: aligns[i] };
   })];
   d.teamList.forEach(function(t, idx) {
@@ -1299,10 +1357,10 @@ function buildPdfDef(d, withRef, blocks, profKey) {
     }));
   });
   content.push({ table: { widths: pdfWidths(sc), body: sBody, headerRows: 1, dontBreakRows: true },
-                 layout: PDF_TABLE_LAYOUT, fontSize: 10, unbreakable: true });
+                 layout: PDF_TABLE_LAYOUT, fontSize: fpt, unbreakable: true });
 
   content.push(pdfChap(ch, 2, pt(200)));
-  richPdf(blocks).forEach(function(n) { content.push(n); });
+  richPdf(blocks, fpt).forEach(function(n) { content.push(n); });
 
 
   return {
@@ -1335,7 +1393,7 @@ async function downloadPdf() {
     await loadPdfMake();
     const tpl   = (document.getElementById('fname').value.trim() || '[soutez]_[kolo]');
     const fname = resolveFname(tpl, _doc.compId, _doc.kolo, 'pdf');
-    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile)).download(fname);
+    await pdfMake.createPdf(buildPdfDef(_doc, _withRef, richBlocks(document.getElementById('pozn')), _profile, _fontPt)).download(fname);
     saveHistoryEntry({ compId: _doc.compId, compName: _doc.compName, fname: tpl, ts: Date.now() });
     setMsg('✓ Staženo: ' + esc(fname), 'ok', 'dlMsg');
   } catch (e) {
@@ -1380,7 +1438,6 @@ async function generate() {
       dateStr:    todayCz(),
       matchList:  matchList,
       teamList:   norm(standings),
-      nameW:      computeNameWidth(matchList),
       refs:       keepRefs ? _doc.refs : matchList.map(function() { return ''; }),
     };
     // Různé obsahuje jméno vedoucího a datum → pro jinou soutěž/kolo výchozí text
@@ -1844,6 +1901,22 @@ window.addEventListener('DOMContentLoaded', function() {
     b.addEventListener('click', function() {
       setProfile(b.dataset.v);
       try { localStorage.setItem(PROFILE_KEY, _profile); } catch (e) {}
+      renderPreview();
+    });
+  });
+
+  // Přepínač velikosti písma — pamatuje se, změna hned v náhledu (přepočet šířek)
+  function setFont(v) {
+    _fontPt = FONT_PTS.indexOf(+v) >= 0 ? +v : FONT_DEFAULT;
+    [].forEach.call(document.querySelectorAll('#fontSeg button'), function(x) {
+      x.classList.toggle('on', +x.dataset.v === _fontPt);
+    });
+  }
+  try { setFont(localStorage.getItem(FONT_KEY)); } catch (e) {}
+  [].forEach.call(document.querySelectorAll('#fontSeg button'), function(b) {
+    b.addEventListener('click', function() {
+      setFont(b.dataset.v);
+      try { localStorage.setItem(FONT_KEY, String(_fontPt)); } catch (e) {}
       renderPreview();
     });
   });

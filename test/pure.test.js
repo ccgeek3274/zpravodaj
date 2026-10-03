@@ -24,9 +24,10 @@ const ctx = { window: { addEventListener() {} }, console };
 vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
-const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, computeNameWidth, ttlFor,
-        matchCols, standingsCols, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, matchLayout, ttlFor,
+        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
+const sum = a => a.reduce((x, y) => x + y, 0);
 
 test('ttlFor — matches+table 10 min (živá data), ostatní 1 h', () => {
   assert.equal(ttlFor('/competitions/3327/round/2/matches'), 600000);
@@ -67,22 +68,35 @@ test('resolveFname — placeholdery, dvouciferné kolo, přípona, sanitizace', 
   assert.equal(resolveFname('hotovo.docx', '1', '1', 'pdf'), 'hotovo.pdf');       // .docx v šabloně → .pdf
 });
 
-test('computeNameWidth — meze a monotónie', () => {
-  // Prázdný seznam → minimální šířka 1200 dxa.
-  assert.equal(computeNameWidth([]), 1200);
+const game = (h, a) => ({ homePlayerName: h, awayPlayerName: a, homePlayerRating: 1800, awayPlayerRating: 2100,
+                          homePlayerResult: 1, awayPlayerResult: 0 });
+const match = (games, ht = 'A', at = 'B') => ({ homeTeamName: ht, awayTeamName: at, homeTeamScore: 2.5,
+                                                awayTeamScore: 1.5, matchGames: games });
+
+test('matchLayout — meze, monotónie, výchozí šířky při 10 pt', () => {
+  // Prázdný seznam → minimální šířka jmen 1200 dxa, úzké sloupce výchozí.
+  const e = matchLayout([], '1', 10);
+  assert.deepEqual(plain(e), { board: 460, name: 1200, elo: 640, result: 1120, fits: true });
 
   // Delší jméno musí dát širší (nebo stejný, kvůli stropu) sloupec než kratší.
-  const krat = computeNameWidth([{ homeTeamName: 'A', awayTeamName: 'B',
-    matchGames: [{ homePlayerName: 'Jan', awayPlayerName: 'Eva' }] }]);
-  const dlouhy = computeNameWidth([{ homeTeamName: 'A', awayTeamName: 'B',
-    matchGames: [{ homePlayerName: 'Bartoloměj Nejdelší-Příjmení', awayPlayerName: 'Eva' }] }]);
-  assert.ok(krat >= 1200, `krátké jméno pod minimem: ${krat}`);
+  const krat   = matchLayout([match([game('Jan', 'Eva')])], '1', 10).name;
+  const dlouhy = matchLayout([match([game('Bartoloměj Nejdelší-Příjmení', 'Eva')])], '1', 10).name;
   assert.ok(dlouhy >= krat, `delší jméno nedalo širší sloupec: ${dlouhy} < ${krat}`);
 
-  // Nikdy nepřekročí strop (polovina zbylé šířky po pevných sloupcích).
-  const maxAllowed = computeNameWidth([{ homeTeamName: 'X'.repeat(200),
-    awayTeamName: 'Y', matchGames: [{ homePlayerName: 'Z'.repeat(200), awayPlayerName: '' }] }]);
-  assert.ok(maxAllowed < 9026, `šířka přesáhla obsah stránky: ${maxAllowed}`);
+  // Strop: celá tabulka se vejde do sazby, fits=false když se jméno nevejde.
+  const big = matchLayout([match([game('Z'.repeat(200), '')], 'X'.repeat(200))], '1', 10);
+  assert.equal(big.fits, false);
+  assert.ok(sum(matchCols(big)) <= 9026);
+});
+
+test('matchLayout — větší písmo = širší sloupce, číslo zápasu „11.6“ se vejde', () => {
+  const ms = [1, 2, 3, 4, 5, 6].map(() => match([game('Procházka, Jiří', 'Kučera, Martin')], 'ŠK Lokomotiva Brno B', 'TJ Bohunice'));
+  const l10 = matchLayout(ms, '11', 10), l12 = matchLayout(ms, '11', 12);
+  assert.ok(l12.name > l10.name);
+  assert.ok(l12.board >= l10.board && l12.result >= l10.result && l12.elo >= l10.elo);
+  assert.ok(l10.board > 460, 'číslo zápasu 11.6 rozšíří první sloupec');
+  assert.ok(l12.fits);
+  assert.ok(sum(matchCols(l12)) <= 9026);
 });
 
 // ── apiGet: serializovaná fronta + self-block po 429 ──────────────
@@ -126,16 +140,18 @@ test('apiGet — po 429 se další dotazy odmítnou bez volání fetch', async (
 });
 
 test('standingsCols — součet = šířka sazby (9026 DXA), Družstvo dopočítané', () => {
-  const ws = standingsCols();
-  assert.equal(ws.length, 9);
-  assert.equal(ws.reduce((a, b) => a + b, 0), 9026);
-  assert.ok(ws[1] > 3000);
-});
-
-test('matchCols — 6 sloupců, max. šířka jmen se vejde do sazby', () => {
-  const ws = matchCols(computeNameWidth([{ homeTeamName: 'X'.repeat(200), matchGames: [] }]));
-  assert.equal(ws.length, 6);
-  assert.ok(ws.reduce((a, b) => a + b, 0) <= 9026);
+  const ws = standingsCols([], 10);
+  assert.deepEqual(plain(ws), [480, 4526, 520, 520, 520, 520, 620, 700, 620]);   // výchozí šířky
+  const teams = [{ teamRank: 12, teamName: 'ŠK Lokomotiva Brno B', matchesPlayed: 11, matchWins: 10,
+                   matchDraws: 1, matchLosses: 0, points: 31, score: 62.5, wonGames: 120 }];
+  for (const f of [9, 10, 11, 12]) {
+    const w = standingsCols(teams, f);
+    assert.equal(w.length, 9);
+    assert.equal(sum(w), 9026);
+    assert.ok(w[1] > 3000);
+  }
+  assert.ok(standingsLayout(teams, 12).fits);
+  assert.equal(standingsLayout([{ teamName: 'X'.repeat(200) }], 10).fits, false);
 });
 
 test('refLine — „Rozhodčí: " + jméno, prázdné jméno ponechá jen popisek', () => {
@@ -192,7 +208,7 @@ test('richBlocks — B/I/U, <font size>, CSS styly, vnořené formáty', () => {
   const r = root(el('DIV', null, txt('a '), el('B', null, txt('b '), el('I', null, txt('c'))), txt(' '),
     el('U', null, txt('d')), txt(' '), el('FONT', { size: 5 }, txt('e')), txt(' '),
     el('SPAN', { style: { fontWeight: '700', fontSize: '12pt' } }, txt('f'))));
-  assert.deepEqual(simple(richBlocks(r)), ['a |*b |*/c| |_d| |14:e| |*12:f']);
+  assert.deepEqual(simple(richBlocks(r)), ['a |*b |*/c| |_d| |12:e| |*12:f']);
 });
 
 test('richBlocks — odrážky, prázdný řádek, <br>, mezery mezi bloky, koncové prázdné řádky', () => {
@@ -211,14 +227,15 @@ test('headerText — „Kraj - Soutěž - Ročník“, chybějící části se v
   assert.equal(headerText({ regionName: '', compName: 'Extraliga', season: null }), 'Extraliga');
 });
 
-test('sizeAtNode — <font size>, CSS font-size, základ 11 pt', () => {
+test('sizeAtNode — <font size>, CSS font-size, základ = písmo tabulek', () => {
   const t1 = txt('a'), t2 = txt('b'), t3 = txt('c');
   const ed = root(el('FONT', { size: 5 }, el('B', null, t1)), el('SPAN', { style: { fontSize: '12pt' } }, t2), t3);
   const fix = n => { n.childNodes.forEach(k => { k.parentNode = n; if (k.childNodes) fix(k); }); };
   fix(ed);
-  assert.equal(sizeAtNode(t1, ed), 14);
+  assert.equal(sizeAtNode(t1, ed), 12);
   assert.equal(sizeAtNode(t2, ed), 12);
-  assert.equal(sizeAtNode(t3, ed), 11);
+  assert.equal(sizeAtNode(t3, ed), 10);       // výchozí 10 pt
+  assert.equal(sizeAtNode(t3, ed, 12), 12);   // přepínač Písmo 12 pt
 });
 
 test('profileOf — Klasický = původní vzhled, neznámý klíč → Klasický', () => {

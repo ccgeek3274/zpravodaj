@@ -34,6 +34,13 @@ Práce má tři kroky:
      kapitoly „I. VÝSLEDKY N. KOLA“ … podtržené
    - *Moderní* — šedé záhlaví uprostřed, modré „N. kolo“ + soutěž s linkou,
      modré kapitoly „Výsledky“, „Průběžné pořadí“, „Informace řídícího soutěže“
+   A přepínač **Písmo** 9 / 10 / 11 / 12 pt (výchozí 10, pamatuje se) — jedna
+   velikost pro tabulky, řádek Rozhodčí i text v Různé; nadpisy kapitol se
+   posunou o stejný rozdíl. Šířky sloupců se přepočítají z naměřených textů.
+   Když se nejdelší jméno nebo název družstva nevejde na řádek, náhled to
+   ohlásí (v DOCX/PDF se zalomí). Na reálných datech (Extraliga, KP SŠS):
+   9–10 pt čisté, 11 pt zalomí jen extrémně dlouhé názvy družstev
+   (~30+ znaků), 12 pt i delší jména hráčů.
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
    DOCX** nebo **Stáhnout PDF**. Obojí se sestaví až teď, se všemi úpravami.
    PDF generuje přímo prohlížeč (pdfmake, písmo Roboto) ze stejných dat
@@ -49,8 +56,9 @@ Práce má tři kroky:
   zablokuje. Cache odpovědí v `localStorage` — výsledky kola a tabulka 10 min,
   ostatní 1 h; tlačítko *Vymazat cache*.
 - Výsledky: každý zápas jako samostatná tabulka, jména a ELO v oddělených
-  buňkách; šířka sloupců se jmény se počítá dynamicky podle nejdelšího jména
-  hráče i názvu týmu (měřeno přes canvas), aby se nic nezalomilo.
+  buňkách; šířky sloupců se počítají podle nejdelšího textu při zvolené
+  velikosti písma (měřeno přes canvas) — jména hráčů, názvy týmů i číslo
+  zápasu (např. „11.6“), ELO a výsledek, aby se nic nezalomilo.
 - Tabulky se nedělí mezi stránky (`cantSplit` + `keepNext`).
 - Jméno vedoucího se bere z API (`compManagerName`).
 - Záhlaví stránky na jednom řádku (9 pt, profil Klasický): *Kraj - Soutěž - Ročník*; ročník se
@@ -78,8 +86,8 @@ API chess.cz posílá `Access-Control-Allow-Origin: *`, takže frontend volá
 
 Generátor běží v prohlížeči (knihovna `docx` v7.8.2 z jsDelivr se SRI; v8.5
 má TDZ bug v UMD bundlu, na cdnjs docx není). Čisté funkce (`fmtHalf`,
-`abbrev`, `resolveFname`, `computeNameWidth`, `ttlFor`, šířky sloupců
-`matchCols`/`standingsCols`, `refLine`, `parseCompetitions`, rozpis kol
+`abbrev`, `resolveFname`, `ttlFor`, šířky sloupců
+`matchLayout`/`matchCols`/`standingsLayout`, `refLine`, `parseCompetitions`, rozpis kol
 `parseSchedule`/`pickRound`/`roundLabel`, profily `profileOf`) i fronta `apiGet`
 (rozestup, blokace po 429; s mockem `fetch`) jsou pokryté testy:
 
