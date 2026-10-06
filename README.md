@@ -26,10 +26,13 @@ Práce má tři kroky:
 2. **Náhled a úpravy** — náhled má stejné šířky tabulek jako DOCX. Žlutá pole
    lze přepsat přímo v náhledu: jméno rozhodčího pod každým zápasem
    (řádek „Rozhodčí: …“ přes celou šířku tabulky) a celou sekci *Různé*
-   včetně jména vedoucího a data. Různé má lištu: **tučně**, *kurzíva*,
-   podtržení, odrážky, velikost písma (tlačítka 9–16 pt; zvýrazněná = velikost
-   u kurzoru) a ↺ návrat k výchozímu textu.
-   Ze schránky se vkládá jen prostý text.
+   včetně jména vedoucího a data. Různé je editor [Quill 2](https://quilljs.com)
+   s lištou: **tučně**, *kurzíva*, podtržení, odrážky, číslování (i psaním
+   „- “ / „1. “ na začátek řádku), velikost písma (tlačítka 9–16 pt; zvýrazněná
+   = velikost u kurzoru), ↶ ↷ zpět / znovu a ↺ návrat k výchozímu textu.
+   Ze schránky se zachová jen povolené formátování (bez cizích velikostí).
+   Obsah se drží jako Quill Delta (JSON) a z ní vzniká PDF i DOCX —
+   viz [analýza](docs/editor-textu-analyza.md).
    Přepínač Rozhodčí lze měnit i po vygenerování, jména zůstanou.
    Stejně tak přepínač **Vzhled** (pamatuje se v prohlížeči) — tři profily,
    které se liší záhlavím stránky, hlavičkou a nadpisy kapitol:

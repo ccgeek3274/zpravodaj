@@ -25,7 +25,7 @@ vm.createContext(ctx);
 vm.runInContext(m[1], ctx);
 
 const { fmtHalf, abbrev, seasonYears, suggestFname, resolveFname, matchLayout, ttlFor,
-        matchCols, standingsCols, standingsLayout, refLine, richBlocks, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, scheduleRound, noResultsText, mergeRound, eloCell, sizeAtNode, matchName, parseCompetitions, findRegionOf } = ctx;
+        matchCols, standingsCols, standingsLayout, refLine, deltaBlocks, defaultRozne, headerText, profileOf, parseCzDate, parseSchedule, pickRound, roundLabel, scheduleRound, noResultsText, mergeRound, eloCell, matchName, parseCompetitions, findRegionOf } = ctx;
 const plain = o => JSON.parse(JSON.stringify(o));
 const sum = a => a.reduce((x, y) => x + y, 0);
 
@@ -186,56 +186,37 @@ test('seasonYears / suggestFname — sezóna soutěže, ne dnešní datum', () =
   assert.equal(suggestFname("Regionální soutěž 'D'", 2025), 'rsd_25_26_[kolo]');
 });
 
-// ── richBlocks nad minimálním falešným DOM ───────────────────────
-function txt(v) { return { nodeType: 3, nodeValue: v }; }
-function el(tag, attrs, ...kids) {
-  const n = { nodeType: 1, nodeName: tag, childNodes: kids, style: (attrs && attrs.style) || {},
-              getAttribute: k => (attrs && attrs[k] != null ? String(attrs[k]) : null) };
-  kids.forEach((k, i) => { k.nextSibling = kids[i + 1] || null; });
-  return n;
-}
-const root = (...kids) => el('DIV', null, ...kids);
-const simple = bs => plain(bs).map(b => (b.li ? '• ' : '') + b.runs.map(r =>
+// ── deltaBlocks: Quill Delta → model řádků ───────────────────────
+const simple = bs => plain(bs).map(b => (b.list === 'bullet' ? '• ' : b.list === 'ordered' ? '# ' : '') + b.runs.map(r =>
   (r.b ? '*' : '') + (r.i ? '/' : '') + (r.u ? '_' : '') + (r.size ? r.size + ':' : '') + r.text).join('|'));
 
-test('richBlocks — řádky z <div>, první řádek jako holý text (Chrome)', () => {
-  const r = root(txt('Prosím o kontrolu.'), el('DIV', null, el('B', null, txt('Karel Jukl'))),
-                 el('DIV', null, txt('2. 10. 2026')));
-  assert.deepEqual(simple(richBlocks(r)), ['Prosím o kontrolu.', '*Karel Jukl', '2. 10. 2026']);
+test('deltaBlocks — výchozí text Různé (tučné jméno), řádky podle \\n', () => {
+  const ops = defaultRozne({ jmeno: 'Karel Jukl', dateStr: '2. 10. 2026' });
+  assert.deepEqual(simple(deltaBlocks(ops)),
+    ['Prosím o kontrolu hráčů i výsledků, zda jsem někde neudělal chybu.', '*Karel Jukl', '2. 10. 2026']);
+  assert.equal(simple(deltaBlocks(defaultRozne({ jmeno: '', dateStr: 'x' }))).length, 2);
 });
 
-test('richBlocks — B/I/U, <font size>, CSS styly, vnořené formáty', () => {
-  const r = root(el('DIV', null, txt('a '), el('B', null, txt('b '), el('I', null, txt('c'))), txt(' '),
-    el('U', null, txt('d')), txt(' '), el('FONT', { size: 5 }, txt('e')), txt(' '),
-    el('SPAN', { style: { fontWeight: '700', fontSize: '12pt' } }, txt('f'))));
-  assert.deepEqual(simple(richBlocks(r)), ['a |*b |*/c| |_d| |12:e| |*12:f']);
+test('deltaBlocks — B/I/U, velikost v pt, více běhů na řádku', () => {
+  const ops = [{ insert: 'a ' }, { insert: 'b', attributes: { bold: true, italic: true } }, { insert: ' ' },
+               { insert: 'c', attributes: { underline: true, size: '12pt' } }, { insert: '\n' }];
+  assert.deepEqual(simple(deltaBlocks(ops)), ['a |*/b| |_12:c']);
 });
 
-test('richBlocks — odrážky, prázdný řádek, <br>, mezery mezi bloky, koncové prázdné řádky', () => {
-  const r = root(txt('\n  '), el('DIV', null, txt('úvod')), txt('\n'),
-    el('UL', null, txt('\n'), el('LI', null, txt('jedna')), el('LI', null, el('B', null, txt('dvě')))),
-    el('DIV', null, el('BR', null)),
-    el('DIV', null, txt('x'), el('BR', null), txt('y')),
-    el('DIV', null, el('DIV', null, txt('vnořený'))),
-    el('DIV', null, el('BR', null)));
-  assert.deepEqual(simple(richBlocks(r)), ['úvod', '• jedna', '• *dvě', '', 'x', 'y', 'vnořený']);
+test('deltaBlocks — odrážky, číslování, prázdný řádek, vložené objekty, koncové prázdné řádky', () => {
+  const ops = [{ insert: 'úvod\n\njedna' }, { insert: '\n', attributes: { list: 'bullet' } },
+               { insert: 'dvě', attributes: { bold: true } }, { insert: '\n', attributes: { list: 'bullet' } },
+               { insert: 'první' }, { insert: '\n', attributes: { list: 'ordered' } },
+               { insert: { image: 'x.png' } }, { insert: 'konec\n\n\n' }];
+  assert.deepEqual(simple(deltaBlocks(ops)), ['úvod', '', '• jedna', '• *dvě', '# první', 'konec']);
+  assert.deepEqual(simple(deltaBlocks([{ insert: 'bez konce' }])), ['bez konce']);
+  assert.deepEqual(plain(deltaBlocks(null)), []);
 });
 
 test('headerText — „Kraj - Soutěž - Ročník“, chybějící části se vynechají', () => {
   assert.equal(headerText({ regionName: 'Středočeský šachový svaz (SŠS)', compName: "Regionální soutěž 'D'", season: 2025 }),
                "Středočeský šachový svaz (SŠS) - Regionální soutěž 'D' - 2025/2026");
   assert.equal(headerText({ regionName: '', compName: 'Extraliga', season: null }), 'Extraliga');
-});
-
-test('sizeAtNode — <font size>, CSS font-size, základ = písmo tabulek', () => {
-  const t1 = txt('a'), t2 = txt('b'), t3 = txt('c');
-  const ed = root(el('FONT', { size: 5 }, el('B', null, t1)), el('SPAN', { style: { fontSize: '12pt' } }, t2), t3);
-  const fix = n => { n.childNodes.forEach(k => { k.parentNode = n; if (k.childNodes) fix(k); }); };
-  fix(ed);
-  assert.equal(sizeAtNode(t1, ed), 12);
-  assert.equal(sizeAtNode(t2, ed), 12);
-  assert.equal(sizeAtNode(t3, ed), 10);       // výchozí 10 pt
-  assert.equal(sizeAtNode(t3, ed, 12), 12);   // přepínač Písmo 12 pt
 });
 
 test('profileOf — Klasický = původní vzhled, neznámý klíč → Klasický', () => {
