@@ -48,9 +48,13 @@ Práce má tři kroky:
    (~30+ znaků), 12 pt i delší jména hráčů.
 3. **Stažení** — název souboru (šablona s `[soutez]` a `[kolo]`), **Stáhnout
    DOCX** nebo **Stáhnout PDF**. Obojí se sestaví až teď, se všemi úpravami.
-   PDF generuje přímo prohlížeč (pdfmake, písmo Roboto) ze stejných dat
-   a rozměrů jako DOCX — žádný tiskový dialog ani převod. Knihovna (~1,9 MB)
-   se načítá na pozadí až po vygenerování náhledu.
+   PDF generuje přímo prohlížeč (pdfmake) ze stejných dat a rozměrů jako
+   DOCX — žádný tiskový dialog ani převod. Knihovna (~1 MB) se načítá na
+   pozadí až po vygenerování náhledu.
+
+Písmo dokumentu je **Calibri** (DOCX). Náhled a měření šířek sloupců použijí
+Calibri, jinak metricky shodný Carlito (OFL, `public/fonts/`), který je
+vložený i do PDF — rozměry tak sedí ve všech třech.
 
 ## Vlastnosti
 

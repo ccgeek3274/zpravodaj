@@ -149,23 +149,28 @@ input:disabled { opacity:.6; cursor:not-allowed; }
    Rozměry 1:1 s DOCX: 1 px = 15 DXA (1440 DXA = 1 in = 96 px),
    pt × 4/3 = px. Stránka A4 = 794 px, okraje 2,54 cm = 96 px,
    tabulky table-layout:fixed se stejnými šířkami sloupců jako v DOCX. */
+/* Písmo dokumentu: Calibri, jinak metricky shodný Carlito (místní, nebo z /fonts) */
+@font-face { font-family:DocFont; src:local('Calibri'), local('Carlito'), url(fonts/Carlito-Regular.ttf) format('truetype'); }
+@font-face { font-family:DocFont; font-weight:bold; src:local('Calibri Bold'), local('Calibri-Bold'), local('Carlito Bold'), local('Carlito-Bold'), url(fonts/Carlito-Bold.ttf) format('truetype'); }
+@font-face { font-family:DocFont; font-style:italic; src:local('Calibri Italic'), local('Calibri-Italic'), local('Carlito Italic'), local('Carlito-Italic'), url(fonts/Carlito-Italic.ttf) format('truetype'); }
+@font-face { font-family:DocFont; font-weight:bold; font-style:italic; src:local('Calibri Bold Italic'), local('Calibri-BoldItalic'), local('Carlito Bold Italic'), local('Carlito-BoldItalic'), url(fonts/Carlito-BoldItalic.ttf) format('truetype'); }
 .preview-body { padding:12px; background:var(--header); overflow-x:auto; }
 .doc {
   width:794px; margin:0 auto; background:#fff; color:#000;
-  font-family:Arial, Helvetica, sans-serif; font-size:14.67px; line-height:1.15;
+  font-family:DocFont, Calibri, Carlito, sans-serif; font-size:14.67px; line-height:1.22;
   padding:26px 96px 96px; border:1px solid var(--divider);
 }
 /* záhlaví 9 pt na jednom řádku; 0,7 cm od kraje, sazba od 1,4 cm */
-.doc-hdr { display:flex; justify-content:space-between; gap:12px; font-size:12px; line-height:1.15;
+.doc-hdr { display:flex; justify-content:space-between; gap:12px; font-size:12px; line-height:1.22;
   white-space:nowrap; min-height:14px; margin-bottom:13px; }
 .doc-hdr span { overflow:hidden; text-overflow:ellipsis; }
 .doc-hdr span:first-child:empty { flex:1; }
 .doc-hdr .c { flex:1; text-align:center; }
-.doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; line-height:1.15; }
+.doc .d-title { text-align:center; font-size:21.33px; font-weight:bold; margin:0 0 10.67px; line-height:1.22; }
 .doc .d-h { font-size:13.33px; font-weight:bold; margin:13.33px 0 5.33px; }
 .doc .d-h.first { margin-top:4px; }
 .doc .d-p { margin:0 0 6.67px; }
-.doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.15; }
+.doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.22; }
 .doc table.res { margin-bottom:16.87px; }   /* = prázdný řádek 11 pt (gap() v DOCX) */
 .doc table.res:last-of-type { margin-bottom:0; }
 .doc td, .doc th { border:1px solid #AAA; padding:1.6px 6px; vertical-align:middle;
@@ -342,7 +347,7 @@ input:disabled { opacity:.6; cursor:not-allowed; }
       <div id="dlMsg" class="msg2"></div>
       <div class="note">
         • DOCX i PDF se sestaví až při stažení — obsahují vše, co jste v náhledu doplnili.<br>
-        • PDF drží formu DOCX (rozměry tabulek, okraje, záhlaví), jen jiným písmem (Roboto místo Arialu).<br>
+        • PDF drží formu DOCX (rozměry tabulek, okraje, záhlaví) i písmo (Carlito = metricky shodná náhrada Calibri).<br>
         • Tabulka pořadí odpovídá <b>datu generování</b> zpravodaje — pořadí k předchozím kolům nelze vygenerovat.
       </div>
     </div>
@@ -375,6 +380,7 @@ const COL_ELO    = 640;
 
 const FS = 20;             // 10 pt (half-points)
 // Velikost písma tabulek, řádku Rozhodčí a textu Různé (pt) — přepínač Písmo
+const FONT = 'Calibri';            // písmo DOCX (PDF: metricky shodný Carlito)
 const FONT_PTS = [9, 10, 11, 12];
 const FONT_DEFAULT = 10;
 const FONT_KEY = 'zpravodaj_font';
@@ -527,21 +533,29 @@ function vedouciName(s) {
   return p.length === 2 ? p[1] + ' ' + p[0] : s.trim();
 }
 
-// Šířka textu v px (Arial 10 pt). V prohlížeči přesně přes canvas, v Node hrubý odhad.
+// Šířka textu v px (Calibri 10 pt). V prohlížeči přesně přes canvas, v Node hrubý odhad.
 function textWidthPx(text, bold, fpt) {
   text = String(text == null ? '' : text);
   fpt = fpt || FONT_DEFAULT;
   if (typeof document !== 'undefined' && document.createElement) {
     const c = textWidthPx._c || (textWidthPx._c = document.createElement('canvas'));
     const ctx = c.getContext('2d');
-    ctx.font = (bold ? 'bold ' : '') + fpt + 'pt Arial';
+    ctx.font = (bold ? 'bold ' : '') + fpt + 'pt DocFont, Calibri, Carlito, sans-serif';
     return ctx.measureText(text).width;
   }
   return text.length * (bold ? 7.4 : 7.0) * fpt / FONT_DEFAULT; // fallback (testy v Node) – konzervativní
 }
 
+/* Než se měří šířky: písmo dokumentu (Calibri / Carlito ze /fonts) musí být
+   načtené, jinak canvas měří náhradním písmem. */
+function docFontReady() {
+  if (typeof document === 'undefined' || !document.fonts || !document.fonts.load) return Promise.resolve();
+  return Promise.all(['10pt DocFont', 'bold 10pt DocFont'].map(function(f) { return document.fonts.load(f); }))
+    .catch(function() {});
+}
+
 /* Šířka sloupce (DXA) pro nejširší z textů: okraje buňky (90+90) + malá
-   rezerva proti zalomení (Roboto v PDF je do 2 % širší než Arial, tučný užší).
+   rezerva proti zalomení (Carlito v PDF má stejné metriky jako Calibri).
    Nikdy užší než výchozí šířka base. */
 const CELL_MARG = 180;
 function colFor(texts, bold, fpt, base) {
@@ -701,7 +715,7 @@ function cell(text, opts) {
       keepNext:  keepN,   // drží řádek s následujícím → tabulka se nerozdělí mezi stránky
       keepLines: true,
       spacing:   { before: 0, after: 0, line: 240, lineRule: 'auto' },
-      children: [new docx.TextRun({ text: String(text != null ? text : ''), bold: bold, size: fs, font: 'Arial' })]
+      children: [new docx.TextRun({ text: String(text != null ? text : ''), bold: bold, size: fs, font: FONT })]
     })]
   });
 }
@@ -795,7 +809,7 @@ function para(text, opts) {
     alignment: opts.align || 'left',
     spacing:   { before: opts.before || 0, after: opts.after || 100 },
     children:  [new docx.TextRun({
-      text: text, font: 'Arial', size: opts.size || 22, bold: opts.bold || false
+      text: text, font: FONT, size: opts.size || 22, bold: opts.bold || false
     })]
   });
 }
@@ -942,7 +956,7 @@ function richDocx(blocks, base) {
       bullet: bl.li ? { level: 0 } : undefined,
       children: bl.runs.map(function(r) {
         return new docx.TextRun({
-          text: r.text, font: 'Arial', size: Math.round((r.size || base) * 2),
+          text: r.text, font: FONT, size: Math.round((r.size || base) * 2),
           bold: r.b || undefined, italics: r.i || undefined, underline: r.u ? {} : undefined,
         });
       }),
@@ -1162,7 +1176,7 @@ function docxChap(ch, i, before) {
     keepNext: true,
     spacing: { before: before, after: 80 },
     border: docxRule(ch.rule),
-    children: [new docx.TextRun({ text: ch.labels[i], font: 'Arial', bold: true,
+    children: [new docx.TextRun({ text: ch.labels[i], font: FONT, bold: true,
                                   size: Math.round(ch.size * 2), color: ch.color || undefined })]
   });
 }
@@ -1178,7 +1192,7 @@ function buildDocx(d, withRef, blocks, profKey, fpt) {
       keepNext: true,
       spacing: { before: 0, after: Math.round(t.after * 20) },
       border: i === titles.length - 1 ? docxRule(P.titleRule, 12) : undefined,
-      children: [new docx.TextRun({ text: t.text, font: 'Arial', bold: !!t.bold,
+      children: [new docx.TextRun({ text: t.text, font: FONT, bold: !!t.bold,
                                     size: Math.round(t.size * 2), color: t.color || undefined })]
     });
   });
@@ -1199,7 +1213,7 @@ function buildDocx(d, withRef, blocks, profKey, fpt) {
   /* ── Stránkové záhlaví podle profilu: text uprostřed, nebo vlevo/vpravo
      (pravá část na zarážce tabulátoru u pravého okraje) ── */
   function hRun(text) {
-    return new docx.TextRun({ text: text, size: Math.round(hd.size * 2), font: 'Arial', color: hd.color || undefined });
+    return new docx.TextRun({ text: text, size: Math.round(hd.size * 2), font: FONT, color: hd.color || undefined });
   }
   const hRuns = hd.c != null ? [hRun(hd.c)]
               : !hd.l ? [hRun(hd.r || '')]
@@ -1216,7 +1230,7 @@ function buildDocx(d, withRef, blocks, profKey, fpt) {
 
   /* header 0,7 cm od okraje; horní okraj zmenšen na 1,4 cm (méně místa nahoře) */
   return new docx.Document({
-    styles: { default: { document: { run: { font: 'Arial', size: 22 } } } },
+    styles: { default: { document: { run: { font: FONT, size: 22 } } } },
     sections: [{
       headers: { default: pageHeader },
       properties: {
@@ -1257,15 +1271,13 @@ async function downloadDocx() {
   }
 }
 
-/* ── PDF přes pdfmake (Roboto) ───────────────────────────────────
+/* ── PDF přes pdfmake (Carlito) ───────────────────────────────────
    Sestavuje se ze stejného stavu a stejných rozměrů jako DOCX
-   (DXA / 20 = pt). Knihovna má i s fontem ~1,9 MB, proto se načítá
+   (DXA / 20 = pt). Knihovna má ~1 MB (písmo Carlito z /fonts další ~2,7 MB), proto se načítá
    až na pozadí po vygenerování náhledu, ne při otevření stránky. */
 const PDFMAKE_SRC = [
   { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.3.3/pdfmake.min.js',
     sri: 'sha512-EkS5jkn3vXRWIdphIy51xskMZggNip3Or8kpe/FlM5XaQeiK2GZJ9OwrIEbXl6txKWsHNtm4OXtxzkkz41Mspw==' },
-  { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.3.3/fonts/Roboto.min.js',
-    sri: 'sha512-bOva+XtvREfGZHN76jdWd0EvHsfTl7KKKrywZA4UTHYBeYdhJO8rhxZaBpof+ukGhgvWCmdIkKMS3pZyqrFSIw==' },
 ];
 let _pdfReady = null;
 function loadScript(it) {
@@ -1281,13 +1293,18 @@ function loadPdfMake() {
   if (!_pdfReady) {
     _pdfReady = PDFMAKE_SRC.reduce(function(p, it) { return p.then(function() { return loadScript(it); }); },
                                    Promise.resolve())
+      .then(function() {
+        // Carlito ze /fonts (pdfmake si soubory stáhne až při tvorbě PDF)
+        const u = function(f) { return new URL('fonts/Carlito-' + f + '.ttf', location.href).href; };
+        pdfMake.addFonts({ Carlito: { normal: u('Regular'), bold: u('Bold'), italics: u('Italic'), bolditalics: u('BoldItalic') } });
+      })
       .catch(function(e) { _pdfReady = null; throw e; });   // při chybě zkusit znovu příště
   }
   return _pdfReady;
 }
 
 function pt(dxa) { return dxa / 20; }
-const PDF_PAD = 3;            // vodorovný okraj buňky (DOCX má 4,5 pt; Roboto je širší než Arial)
+const PDF_PAD = 3;            // vodorovný okraj buňky (DOCX má 4,5 pt)
 const PDF_LINE = 0.5;
 /* Šířky sloupců pro pdfmake: zadávají se BEZ paddingu a čar → odečíst,
    ať celková šířka tabulky sedí s DOCX. */
@@ -1378,7 +1395,7 @@ function buildPdfDef(d, withRef, blocks, profKey, fpt) {
     // okraje jako DOCX: horní 1,4 cm, ostatní 1 in; záhlaví 0,7 cm od kraje
     pageMargins: [pt(MARGIN), pt(Math.round(1.4 * CM)), pt(MARGIN), pt(MARGIN)],
     header: pdfHeader(hd),
-    defaultStyle: { font: 'Roboto', fontSize: 11 },
+    defaultStyle: { font: 'Carlito', fontSize: 11 },
     info: { title: 'Zpravodaj z kola č. ' + d.kolo + ' — ' + d.compName },
     content: content,
   };
@@ -1484,6 +1501,7 @@ async function generate() {
     // Různé obsahuje jméno vedoucího a datum → pro jinou soutěž/kolo výchozí text
     if (!keepRefs || !_rozne) _rozne = defaultRozne(_doc);
 
+    await docFontReady();
     renderPreview();
     document.getElementById('sec-preview').classList.remove('hidden');
     document.getElementById('sec-download').classList.remove('hidden');
