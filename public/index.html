@@ -176,7 +176,7 @@ input:disabled { opacity:.6; cursor:not-allowed; }
 .doc .d-h { font-size:13.33px; font-weight:bold; margin:13.33px 0 5.33px; }
 .doc .d-h.first { margin-top:4px; }
 .doc .d-p { margin:0 0 6.67px; }
-.doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.22; }
+.doc table { border-collapse:collapse; table-layout:fixed; font-size:13.33px; line-height:1.2; }
 .doc table.res { margin-bottom:16.87px; }   /* = prázdný řádek 11 pt (gap() v DOCX) */
 .doc table.res:last-of-type { margin-bottom:0; }
 .doc td, .doc th { border:1px solid #AAA; padding:1.6px 6px; vertical-align:middle;
@@ -700,6 +700,11 @@ const REF_LABEL = 'Rozhodčí: ';
 function refLine(name) { return REF_LABEL + String(name || '').trim(); }
 
 /* ── Buňka ──────────────────────────────────────────────────────── */
+/* Řádek textu v buňce: přesně 1,2 × velikost písma (twips = half-points × 12).
+   Při „auto“ řádkování přidává pravé Calibri (Word na Macu, hhea metriky)
+   mezeru mezi řádky celou pod text → text se lepí k horní hraně buňky.
+   Pevná výška řádku ho svisle vycentruje (jako v uvodni-zpravodaj). */
+function cellLine(fs) { return fs * 12; }
 function cell(text, opts) {
   opts = opts || {};
   const w     = opts.w     || 1000;
@@ -721,7 +726,7 @@ function cell(text, opts) {
       alignment: align,
       keepNext:  keepN,   // drží řádek s následujícím → tabulka se nerozdělí mezi stránky
       keepLines: true,
-      spacing:   { before: 0, after: 0, line: 240, lineRule: 'auto' },
+      spacing:   { before: 0, after: 0, line: cellLine(fs), lineRule: 'exact' },
       children: [new docx.TextRun({ text: String(text != null ? text : ''), bold: bold, size: fs, font: FONT })]
     })]
   });
